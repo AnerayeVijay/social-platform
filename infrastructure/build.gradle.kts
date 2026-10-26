@@ -1,0 +1,12 @@
+dependencies {
+    implementation(project(":domain"))
+    implementation(project(":application"))
+    implementation("org.postgresql:postgresql:42.7.14")
+    implementation("com.zaxxer:HikariCP:7.0.2")
+    implementation("org.flywaydb:flyway-core:11.14.1")
+    implementation("org.flywaydb:flyway-database-postgresql:11.14.1")
+    implementation("org.eclipse.angus:jakarta.mail:2.0.4")
+    implementation("com.google.api-client:google-api-client:2.8.1")
+    testImplementation(kotlin("test"))
+    testImplementation("org.testcontainers:postgresql:1.21.4")
+}
