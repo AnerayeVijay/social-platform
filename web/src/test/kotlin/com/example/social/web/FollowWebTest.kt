@@ -8,6 +8,16 @@ import java.time.Instant
 import kotlin.test.*
 
 class FollowWebTest {
+    @Test fun `post cards show member names and initials across feed profile and conversation`() {
+        val f = FollowWebFixture()
+        val page = org.jsoup.Jsoup.parse(f.get("/").bodyString())
+        assertEquals("Bob", page.selectFirst(".post-header strong")!!.text())
+        assertEquals("no", page.selectFirst(".post-header strong")!!.attr("translate"))
+        assertEquals("B", page.selectFirst(".post-header .avatar")!!.text())
+        val profile = org.jsoup.Jsoup.parse(f.get("/profiles/${f.bob.value}").bodyString())
+        assertEquals("Bob", profile.selectFirst(".post-header strong")!!.text())
+    }
+
     @Test fun `navigation shows follower and following totals after labels and updates after acceptance and removal`() {
         val f = FollowWebFixture()
         fun assertCounts(who: String, followers: String, following: String) {

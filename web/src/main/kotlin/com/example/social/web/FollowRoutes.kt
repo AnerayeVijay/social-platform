@@ -33,7 +33,7 @@ internal fun followWebRoutes(service: FollowService?, access: AccessControl?): R
                 append("<form class=\"search\" action=\"/members\" method=\"get\"><label for=\"member-name\">Display name</label><input id=\"member-name\" name=\"q\" maxlength=\"80\" required value=\"${escapeHtml(query)}\"><button type=\"submit\">Find</button></form>")
                 if (query.isNotEmpty() && page.members.isEmpty()) append("<section class=\"card empty\">No members to show.</section>")
                 page.members.forEach { member ->
-                    append("<section class=\"card member-result\"><h2><a translate=\"no\" href=\"/profiles/${member.id.value}\">${escapeHtml(member.displayName)}</a></h2>")
+                    append("<section class=\"card member-result\"><span class=\"avatar\" aria-hidden=\"true\" translate=\"no\">${escapeHtml(memberInitials(member.displayName))}</span><h2><a translate=\"no\" href=\"/profiles/${member.id.value}\">${escapeHtml(member.displayName)}</a></h2>")
                     val (action, label) = when (follows.state(session.accountId, member.id)) {
                         FollowState.NONE -> "request" to "Request to follow"
                         FollowState.PENDING -> "cancel" to "Cancel request"
@@ -73,7 +73,7 @@ internal fun followWebRoutes(service: FollowService?, access: AccessControl?): R
                 append(followNavigation(follows, session))
                 if (page.members.isEmpty()) append("<section class=\"card empty\">No members to show.</section>")
                 page.members.forEach { member ->
-                    append("<section class=\"card\"><h2><a translate=\"no\" href=\"/profiles/${member.id.value}\">${escapeHtml(member.displayName)}</a></h2>")
+                    append("<section class=\"card member-result\"><span class=\"avatar\" aria-hidden=\"true\" translate=\"no\">${escapeHtml(memberInitials(member.displayName))}</span><h2><a translate=\"no\" href=\"/profiles/${member.id.value}\">${escapeHtml(member.displayName)}</a></h2>")
                     when (kind) {
                         FollowList.REQUESTS -> { append(followForm(member.id, "accept", "Accept", session)); append(followForm(member.id, "reject", "Reject", session)) }
                         FollowList.FOLLOWERS -> append(followForm(member.id, "remove", "Remove follower", session))

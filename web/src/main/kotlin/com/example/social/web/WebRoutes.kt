@@ -10,12 +10,17 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 
-fun webRoutes(queries: PostQueries, service: PostService? = null, access: AccessControl? = null, accounts: Accounts? = null, accountService: AccountService? = null, follows: FollowService? = null, googleIdentities: GoogleIdentities? = null, threads: CommentThreads? = null): RoutingHttpHandler = routes(
+fun webRoutes(queries: PostQueries, service: PostService? = null, access: AccessControl? = null, accounts: Accounts? = null, accountService: AccountService? = null, follows: FollowService? = null, googleIdentities: GoogleIdentities? = null, threads: CommentThreads? = null, articleFeeds: ArticleFeedService? = null): RoutingHttpHandler = routes(
+    articleFeedWebRoutes(articleFeeds, access),
     commentWebRoutes(threads, access, accounts),
     followWebRoutes(follows, access),
     contentRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads)
 ).withFilter(Filter { next -> { request ->
-    val response = next(request)
+    val original = next(request)
+    val response = if (request.uri.path == "/" && original.header("content-type")?.startsWith("text/html") == true)
+        original.body(original.bodyString().replace("class=\"nav-link\" href=\"/\"", "class=\"nav-link\" href=\"/\" aria-current=\"page\"")
+            .replace("<nav class=\"mobile-nav\" aria-label=\"Mobile navigation\"><a href=\"/\">", "<nav class=\"mobile-nav\" aria-label=\"Mobile navigation\"><a href=\"/\" aria-current=\"page\">"))
+        else original
     val session = access?.session(request)
     if (session == null || response.header("content-type")?.startsWith("text/html") != true) response
     else response.body(withAccountHeader(response.bodyString(), session))
@@ -29,7 +34,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
             val session = access?.session(request)
             val page = queries.feed(20, request.query("before")?.let(::decodePostCursor), viewer = session?.accountId, author = id)
             val content = buildString {
-                append("<section class=\"intro\"><span class=\"eyebrow\">MEMBER PROFILE</span><h1${if (account != null) " translate=\"no\"" else ""}>${escapeHtml(account?.displayName ?: "Legacy member")}</h1><p>${if (account == null) "Archived author identity. This profile cannot be claimed." else "Posts and conversations from this community member."}</p></section>")
+                append("<section class=\"intro profile-intro\"><span class=\"avatar profile-avatar\" aria-hidden=\"true\" translate=\"no\">${escapeHtml(memberInitials(account?.displayName ?: "Legacy member"))}</span><span class=\"eyebrow\">MEMBER PROFILE</span><h1${if (account != null) " translate=\"no\"" else ""}>${escapeHtml(account?.displayName ?: "Legacy member")}</h1><p>${if (account == null) "Archived author identity. This profile cannot be claimed." else "Posts and conversations from this community member."}</p></section>")
                 if (session?.accountId == id && account != null) append("<section class=\"card\"><form action=\"/profile\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"displayName\">Display name</label><input id=\"displayName\" name=\"displayName\" maxlength=\"80\" required value=\"${escapeHtml(account.displayName)}\"><p><button class=\"button\" type=\"submit\">Save profile</button></p></form></section>")
                 if (session?.accountId == id && account != null) {
                     val emails = googleIdentities?.emailsFor(id).orEmpty()
@@ -52,7 +57,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                     }
                 }
                 if (page.posts.isEmpty()) append("<section class=\"card empty\">No posts yet.</section>")
-                page.posts.forEach { append(postCard(it, session)) }
+                page.posts.forEach { append(postCard(it, session, accounts)) }
                 page.next?.let { append("<a class=\"button\" href=\"/profiles/${id.value}?before=${encode(encodePostCursor(it))}\">Older posts &rarr;</a>") }
             }
             htmlPage(account?.displayName ?: "Legacy member", content).let { response ->
@@ -114,7 +119,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                 val content = buildString {
                     append("<a href=\"/\">&larr; Back to feed</a><h1>Conversation</h1>")
                     val session = access?.session(request)
-                    append(postCard(post, session))
+                    append(postCard(post, session, accounts))
                     if (session != null) append("<section class=\"card\"><form action=\"/web/posts/${post.id.value}/comments\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"comment\">Add a comment</label><textarea id=\"comment\" name=\"body\" rows=\"3\" maxlength=\"1000\" required></textarea><p><button class=\"button\" type=\"submit\">Post comment</button></p></form></section>")
                     append("<h2>Comments</h2>")
                     if (comments.comments.isEmpty()) append("<section class=\"card empty\">No comments yet.</section>")
@@ -148,12 +153,12 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
             val content = buildString {
                 append("<section class=\"intro\"><span class=\"eyebrow\">THE COMMUNITY FEED</span><h1>${escapeHtml(title)}</h1><p>Fresh ideas, small discoveries, and conversations worth having.</p></section>")
                 val tagFilter = tag?.let { "&amp;tag=${encode(it.value)}" }.orEmpty()
-                append("<nav class=\"feed-tabs\" aria-label=\"Feed tabs\"><a class=\"button\" href=\"/?scope=all$tagFilter\"${if (scope == "all") " aria-current=\"page\"" else ""}>All posts</a> <a class=\"button\" href=\"/?scope=following$tagFilter\"${if (scope == "following") " aria-current=\"page\"" else ""}>Following</a></nav>")
+                append("<nav class=\"feed-tabs\" aria-label=\"Feed tabs\"><a class=\"button\" href=\"/?scope=all$tagFilter\"${if (scope == "all") " aria-current=\"page\"" else ""}>All posts</a> <a class=\"button\" href=\"/?scope=following$tagFilter\"${if (scope == "following") " aria-current=\"page\"" else ""}>Following</a> <a class=\"button\" href=\"/me/articles\">News &amp; Articles</a></nav>")
                 if (session != null && follows != null) append(followNavigation(follows, session))
                 if (session != null) append("<details class=\"create-post\"><summary class=\"button\"><span aria-hidden=\"true\">＋</span> <span>Create post</span></summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What would you like to share?\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}<p><button class=\"button\" type=\"submit\">Publish post</button></p></form></section></details>")
                 else append("<section class=\"card\"><strong>Join the conversation</strong><p><a class=\"button\" href=\"/login\">Sign in</a> <a href=\"/register\">Create an account</a></p></section>")
                 if (page.posts.isEmpty()) append("<section class=\"card empty\"><h2>No posts yet</h2><p>${if (scope == "following") "Follow members and wait for approval to see their posts here. Your own posts also appear here." else "This space is ready for its first conversation."}</p><a href=\"/\">Back to all posts</a></section>")
-                page.posts.forEach { post -> append(postCard(post, session)) }
+                page.posts.forEach { post -> append(postCard(post, session, accounts)) }
                 page.next?.let {
                     val filter = tag?.let { value -> "&amp;tag=${encode(value.value)}" } ?: ""
                     append("<nav class=\"pagination\" aria-label=\"Feed pagination\"><a class=\"button\" href=\"/?before=${encode(encodePostCursor(it))}&amp;scope=$scope$filter\">Older posts &rarr;</a></nav>")
@@ -166,9 +171,11 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
     }
 )
 
-private fun postCard(post: PostSummary, session: Session? = null): String = """
+private fun postCard(post: PostSummary, session: Session? = null, accounts: Accounts? = null): String {
+    val author = accounts?.byId(post.authorId)
+    return """
     <article class="card post">
-      <header class="post-header"><span class="avatar" aria-hidden="true">${post.authorId.value.toString().take(2).uppercase()}</span><div><a href="/profiles/${post.authorId.value}"><strong>Community member</strong></a><br><time datetime="${post.createdAt}">${post.createdAt}</time></div></header>
+      <header class="post-header"><span class="avatar" aria-hidden="true" translate="no">${escapeHtml(memberInitials(author?.displayName ?: "Community member"))}</span><div><a href="/profiles/${post.authorId.value}"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong></a><br><time datetime="${post.createdAt}">${post.createdAt}</time></div></header>
       <p class="post-body" translate="no">${escapeHtml(post.body)}</p>
       <p class="post-audience">${audienceLabel(post.visibility)}</p>
       ${if (session?.accountId == post.authorId) "<details class=\"edit-audience\"><summary>Change audience</summary><form action=\"/web/posts/${post.id.value}/visibility\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">${audienceSelector("audience-${post.id.value}", post.visibility)}<button class=\"button\" type=\"submit\">Save audience</button></form></details>" else ""}
@@ -177,6 +184,10 @@ private fun postCard(post: PostSummary, session: Session? = null): String = """
       ${session?.let { "<form action=\"/web/posts/${post.id.value}/${if (post.likedByViewer) "unlike" else "likes"}\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(it.csrf)}\"><button class=\"button\" type=\"submit\" aria-pressed=\"${post.likedByViewer}\">${if (post.likedByViewer) "Unlike" else "Like"}</button></form>" } ?: ""}
     </article>
 """.trimIndent()
+}
+
+internal fun memberInitials(name: String): String = name.trim().split(Regex("\\s+")).take(2)
+    .joinToString("") { it.take(1) }.uppercase()
 
 internal fun escapeHtml(value: String): String = value.replace("&", "&amp;").replace("<", "&lt;")
     .replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")

@@ -134,6 +134,72 @@ Search matches any part of a name, ignoring case, and shows verified members oth
 20 per page. Results link to profiles and include request, cancel, or unfollow controls.
 Follow requests still require the other member's approval.
 
+### Profile and appearance settings
+
+After signing in, choose **Settings** in the header, or **Edit profile and appearance** on your
+profile. You can:
+
+- Select **Light**, **Dark**, or **System**. System follows the device's current light/dark setting.
+- Upload, replace, preview, or remove a personal background image. Only you see it, across the website.
+- Edit your display name and public bio (up to 300 characters).
+- Upload, replace, or remove your public profile photo. Photos appear on your profile and wherever
+  the site already displays your avatar; initials remain the fallback when there is no photo.
+
+Preferences and images are saved in PostgreSQL and follow your account across devices. Other
+members keep their own theme and background even when visiting your profile. Signed-out pages use
+System mode. Startup automatically applies `V13__member_customization.sql`; no storage bucket or
+server image directory is required. Database backups now include uploaded images.
+
+Uploads accept JPEG and PNG files up to 5 MB, with each side no larger than 4096 pixels and at most
+16 million pixels total. Profile photos are centre-cropped to 256 × 256; backgrounds fit within
+1920 × 1920 without upscaling. JPEG camera orientation is applied before resizing. Images are
+re-encoded as JPEGs without their original metadata; transparency is flattened onto white.
+Only one image is processed at a time per server instance; busy uploads can be retried.
+
+Uploading requires JavaScript. Theme/profile editing and image removal use normal forms. Background
+images require an authenticated owner session, while profile photos are public wherever the global
+`MEMBERS_ONLY` policy permits access. These controls are website-only; existing mobile APIs are unchanged.
+
+### Personal news and article feeds
+
+Open **News & Articles** next to **All posts** and **Following**, then expand **Manage feeds**.
+Add a name (for example, News or AI articles) and the publisher's public RSS or Atom URL.
+You can subscribe to up to 20 sources. Use a feed URL, not a normal website or article URL;
+this feature does not scrape websites or bypass paywalls.
+
+All your sources appear together in one newest-first list with source names, plain-text abstracts,
+original article links, and **Older articles** pagination. Subscriptions are personal: other members
+cannot see or remove your sources. Removing a source also removes its saved articles from your list.
+The social-post tabs are unchanged.
+
+Sources and articles are saved in PostgreSQL. Opening the article tab (or requesting the article API)
+refreshes sources that have not been attempted in the last 15 minutes. A slow source can delay that
+visit. To avoid waiting for every slow source, no more refreshes are started once a visit has spent
+10 seconds refreshing; the current request finishes and remaining sources are tried on later visits.
+Each source has a shared network timeout across redirects. Failed sources show a notice and keep their previously saved articles; another visit after
+15 minutes retries them. No background worker or AI credentials are needed. Abstracts come from
+feed content, not AI-generated summaries. RSS `content:encoded` (used by some Medium feeds) and Atom
+content are supported when there is no summary. Excerpts are capped at 600 characters and titles at
+200. Undated articles use their first import time for ordering; imported article dates remain stable
+across refreshes so saved pagination links do not skip or repeat existing articles.
+
+Feed fetching follows at most three redirects, rejects private/internal network destinations, disables
+XML external entities, and limits response size. All feed text is rendered without publisher HTML.
+
+Authenticated JSON endpoints (use a bearer token, or a session cookie with CSRF protection for writes):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/me/feeds` | List your sources and their refresh status |
+| `POST` | `/api/me/feeds` | Add a source using `{"name":"AI articles","url":"https://publisher.example/feed.xml"}` |
+| `DELETE` | `/api/me/feeds/SOURCE_UUID` | Remove your source and its articles |
+| `GET` | `/api/me/articles?limit=20` | Combined articles, plus a `next` cursor or `null` |
+
+For subsequent article pages, URL-encode the returned `next` value as `before`. Limits range from
+1 to 100. Article objects contain `id`, `sourceId`, `sourceName`, `title`, `url`, `abstract`, and
+`publishedAt`; source objects include `lastAttemptAt`, `lastSuccessAt`, and `lastError`.
+Startup applies migration `V12__article_feeds.sql` automatically.
+
 ### Post audiences
 
 Create post defaults to **Members only** (your current approved followers and you).

@@ -4,6 +4,7 @@ import com.example.social.api.authenticationRoutes
 import com.example.social.api.mobileReadRoutes
 import com.example.social.api.followRoutes
 import com.example.social.api.commentRoutes
+import com.example.social.api.articleFeedRoutes
 import com.example.social.api.routes as postRoutes
 import com.example.social.application.*
 import com.example.social.http.*
@@ -31,7 +32,10 @@ fun main() {
     val follows = FollowService(accounts, PostgresFollows(dataSource))
     val googleIdentities = PostgresGoogleIdentities(dataSource)
     val threads = CommentThreads(PostgresCommentThreads(dataSource))
-    val content = routes(commentRoutes(threads, access), webRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads),
+    val articleRepository = PostgresArticleFeeds(dataSource)
+    val articleFeeds = ArticleFeedService(articleRepository, fetcher = HttpArticleFeedFetcher(), content = articleRepository)
+    val customization = CustomizationService(PostgresMemberCustomizations(dataSource), RasterMemberImages())
+    val content = routes(settingsRoutes(customization, accounts, accountService, access), articleFeedRoutes(articleFeeds, access), commentRoutes(threads, access), webRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, articleFeeds),
         mobileReadRoutes(queries, accounts, access, follows), followRoutes(follows, access), postRoutes(service, access))
     val publicAccounts = AuthRateLimit().protect(routes(accountRoutes(accountService, accounts, sessions, access, secureCookies), authenticationRoutes(accountService, sessions, access)))
     val google = System.getenv("GOOGLE_CLIENT_ID")?.let {
@@ -41,7 +45,8 @@ fun main() {
     }
     val port = (System.getenv("PORT") ?: "8080").toInt()
     val translator = System.getenv("GOOGLE_TRANSLATION_API_KEY")?.takeIf { it.isNotBlank() }?.let { GoogleTranslation(it) }
-    languageSupport(serverRoutes(content, publicAccounts, google, access), accounts, access, secureCookies, translator)
+    val site = customizationSupport(serverRoutes(content, publicAccounts, google, access), customization, accounts, access)
+    languageSupport(site, accounts, access, secureCookies, translator)
         .asServer(Undertow(port)).start()
     println("Openly web and API listening on http://localhost:$port")
 }

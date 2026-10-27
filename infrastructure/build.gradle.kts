@@ -7,6 +7,8 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql:11.14.1")
     implementation("org.eclipse.angus:jakarta.mail:2.0.4")
     implementation("com.google.api-client:google-api-client:2.8.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jsoup:jsoup:1.21.2")
     testImplementation(kotlin("test"))
     testImplementation("org.testcontainers:postgresql:1.21.4")
 }
