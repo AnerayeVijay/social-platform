@@ -5,4 +5,5 @@ set -eu
 cd "$(dirname "$0")"
 
 docker compose up -d --wait --wait-timeout 60 postgres mailpit
+./gradlew test
 exec ./gradlew :server:run
