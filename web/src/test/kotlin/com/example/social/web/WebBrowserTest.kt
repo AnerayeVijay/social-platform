@@ -132,7 +132,7 @@ class WebBrowserTest {
                         browser.newContext(Browser.NewContextOptions().setViewportSize(width, height)).use { context ->
                             val page = context.newPage()
                             page.navigate("http://localhost:${server.port()}/")
-                            assertTrue(page.title().endsWith(" · Onely"))
+                            assertTrue(page.title().endsWith(" · TALLO"))
                             assertEquals(width <= 700, page.locator(".mobile-nav").isVisible)
                             assertTrue(page.getByText("Hello from the community", Page.GetByTextOptions().setExact(true)).isVisible)
                             page.locator("#tag").fill("kotlin")

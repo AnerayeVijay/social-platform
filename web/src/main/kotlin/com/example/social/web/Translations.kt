@@ -6,12 +6,12 @@ internal fun localizedText(text: String, language: Language): String {
     if (language == Language.ENGLISH || text.isEmpty()) return text
     val suffix = listOf(" →", " ?").firstOrNull { text.endsWith(it) }
     val base = suffix?.let { text.removeSuffix(it) } ?: text
-    val title = base.removeSuffix(" · Onely")
+    val title = base.removeSuffix(" · TALLO")
     val count = Regex("^(\\d+) (likes|comments)$").matchEntire(title)
     val key = count?.groupValues?.get(2) ?: title
     val translated = translations[key]?.get(language.ordinal - 1) ?: return text
     return (count?.let { "${it.groupValues[1]} " } ?: "") + translated +
-        (if (base.endsWith(" · Onely")) " · Onely" else "") + (suffix ?: "")
+        (if (base.endsWith(" · TALLO")) " · TALLO" else "") + (suffix ?: "")
 }
 
 // English | Marathi | Hindi | Gujarati | Tamil | Malayalam. Interface copy only; never user text.
@@ -120,7 +120,7 @@ Main navigation|मुख्य मार्गदर्शन|मुख्य �
 Explore the latest posts and discover conversations through hashtags.|नवीन पोस्ट पाहा आणि हॅशटॅगमधून संवाद शोधा.|नई पोस्ट देखें और हैशटैग से बातचीत खोजें।|નવી પોસ્ટ જુઓ અને હેશટેગથી વાતચીત શોધો.|சமீபத்திய பதிவுகளையும் ஹேஷ்டேக் உரையாடல்களையும் காணுங்கள்.|പുതിയ പോസ്റ്റുകളും ഹാഷ്‌ടാഗ് സംഭാഷണങ്ങളും കണ്ടെത്തുക.
 Find a hashtag|हॅशटॅग शोधा|हैशटैग खोजें|હેશટેગ શોધો|ஹேஷ்டேக்கைத் தேடு|ഹാഷ്‌ടാഗ് തിരയുക
 Find|शोधा|खोजें|શોધો|தேடு|തിരയുക
-Onely · Ideas bring us together.|Onely · कल्पना आपल्याला जोडतात.|Onely · विचार हमें जोड़ते हैं।|Onely · વિચારો આપણને જોડે છે.|Onely · சிந்தனைகள் நம்மை இணைக்கின்றன.|Onely · ആശയങ്ങൾ നമ്മെ ഒന്നിപ്പിക്കുന്നു.
+TALLO · Let's talk about it.|TALLO · कल्पना आपल्याला जोडतात.|TALLO · विचार हमें जोड़ते हैं।|TALLO · વિચારો આપણને જોડે છે.|TALLO · சிந்தனைகள் நம்மை இணைக்கின்றன.|TALLO · ആശയങ്ങൾ നമ്മെ ഒന്നിപ്പിക്കുന്നു.
 My profile|माझी प्रोफाइल|मेरी प्रोफ़ाइल|મારી પ્રોફાઇલ|என் சுயவிவரம்|എന്റെ പ്രൊഫൈൽ
 Share a thought|विचार मांडा|विचार साझा करें|વિચાર વહેંચો|ஒரு சிந்தனையைப் பகிர்|ഒരു ആശയം പങ്കിടുക
 What would you like to share?|तुम्हाला काय सांगायचे आहे?|आप क्या साझा करना चाहेंगे?|તમે શું વહેંચવા માંગો છો?|நீங்கள் எதைப் பகிர விரும்புகிறீர்கள்?|നിങ്ങൾ എന്താണ് പങ്കിടാൻ ആഗ്രഹിക്കുന്നത്?

@@ -106,7 +106,7 @@ class LanguageRoutesTest {
             webRoutes(queries, accounts = accounts)), accounts, access, false)
         val profile = app(Request(Method.GET, "/profiles/${account.id.value}").header("Cookie", "session=reader"))
         assertTrue(profile.bodyString().contains("<h1 translate=\"no\">Community feed</h1>"))
-        assertTrue(profile.bodyString().contains("<title translate=\"no\">Community feed · Onely</title>"))
+        assertTrue(profile.bodyString().contains("<title translate=\"no\">Community feed · TALLO</title>"))
         val form = app(Request(Method.GET, "/register").header("Cookie", "language=hi"))
         assertTrue(form.bodyString().contains("खाता बनाएँ"))
         val formCookie = form.headers.first { it.first.equals("Set-Cookie", true) && it.second!!.startsWith("form_csrf=") }.second!!.substringBefore(';')
