@@ -29,11 +29,11 @@ value class CommentId(val value: UUID) {
 @JvmInline
 value class Hashtag(val value: String) {
     init {
-        require(pattern.matches(value)) { "Invalid hashtag: $value" }
+        require(pattern.matches(value) && value == value.lowercase()) { "Invalid hashtag: $value" }
     }
 
     companion object {
-        private val pattern = Regex("[a-z0-9_]{1,50}")
+        val pattern = Regex("[\\p{L}\\p{M}\\p{N}_]{1,50}")
         fun from(raw: String): Hashtag {
             val normalized = raw.removePrefix("#").lowercase()
             require(pattern.matches(normalized)) { "Invalid hashtag: $raw" }
@@ -129,7 +129,9 @@ class Post(
         const val MAX_BODY_LENGTH = 2_000
         const val MAX_IMAGES = 4
 
-        fun extractHashtags(body: String): Set<Hashtag> = Regex("(?<![A-Za-z0-9_])#([A-Za-z0-9_]{1,50})")
+        private val hashtagInBody = Regex("(?<![\\p{L}\\p{M}\\p{N}_/&@#.:])#([\\p{L}\\p{M}\\p{N}_]{1,50})(?![\\p{L}\\p{M}\\p{N}_])")
+
+        fun extractHashtags(body: String): Set<Hashtag> = hashtagInBody
             .findAll(body).map { Hashtag.from(it.groupValues[1]) }.toSet()
 
         fun publish(authorId: UserId, body: String, now: Instant = Instant.now(), imageCount: Int = 0): Post {

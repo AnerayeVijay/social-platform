@@ -31,7 +31,7 @@ class PostTest {
     }
 
     @Test fun `direct hashtag construction rejects invalid or unnormalized values`() {
-        listOf("", "Kotlin", "#kotlin", "two words", "a".repeat(51)).forEach { value ->
+        listOf("", "Kotlin", "Café", "#kotlin", "two words", "a".repeat(51)).forEach { value ->
             assertFailsWith<IllegalArgumentException>(value) { Hashtag(value) }
         }
         assertEquals(Hashtag("kotlin"), Hashtag.from("#KOTLIN"))
@@ -40,6 +40,16 @@ class PostTest {
     @Test fun `publishing extracts normalized unique hashtags`() {
         val post = Post.publish(author, "Hello #Kotlin and #kotlin #DDD_rocks")
         assertEquals(setOf(Hashtag("kotlin"), Hashtag("ddd_rocks")), post.hashtags)
+    }
+
+    @Test fun `hashtags support unicode letters and digits and normalise case`() {
+        val post = Post.publish(author, "#भारत #Café #Ünïcode2 #TeamIndia")
+        assertEquals(setOf(Hashtag("भारत"), Hashtag("café"), Hashtag("ünïcode2"), Hashtag("teamindia")), post.hashtags)
+    }
+
+    @Test fun `urls emails and overlong tags are not hashtags`() {
+        val body = "see https://example.com/#top and https://x.io/#Cricket, mail a#b@example.com, ##double #" + "a".repeat(51)
+        assertTrue(Post.extractHashtags(body).isEmpty())
     }
 
     @Test fun `blank post is rejected`() {
