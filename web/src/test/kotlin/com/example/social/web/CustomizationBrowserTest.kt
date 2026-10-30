@@ -195,7 +195,7 @@ class CustomizationBrowserTest {
                         assertEquals("rgb(16, 25, 22)", color("html", "backgroundColor"))
                         assertEquals(listOf("rgb(35, 56, 44)", "rgb(35, 56, 44)", "rgb(35, 56, 44)"), page.locator(".post .avatar").all().map { it.evaluate("el => getComputedStyle(el).backgroundColor") })
                         page.navigate("$base/web/posts/${fixture.postId.value}")
-                        assertEquals("rgb(165, 180, 252)", color(".reply-composer summary", "color"))
+                        assertEquals("rgb(130, 214, 173)", color(".reply-composer summary", "color"))
                         browser.newContext(Browser.NewContextOptions().setColorScheme(ColorScheme.LIGHT)).use { secondDevice ->
                             secondDevice.addCookies(listOf(Cookie("session", "reader").setUrl(base)))
                             val otherPage = secondDevice.newPage()
