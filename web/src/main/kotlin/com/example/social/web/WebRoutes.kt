@@ -15,7 +15,7 @@ fun webRoutes(queries: PostQueries, service: PostService? = null, access: Access
     hashtagFollowWebRoutes(hashtagFollows, queries, access, accounts),
     commentWebRoutes(threads, access, accounts, uploadClock),
     followWebRoutes(follows, access),
-    contentRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, uploadClock)
+    contentRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, uploadClock, hashtagFollows)
 ).withFilter(Filter { next -> { request ->
     val original = next(request)
     val response = if (request.uri.path == "/" && original.header("content-type")?.startsWith("text/html") == true)
@@ -27,7 +27,7 @@ fun webRoutes(queries: PostQueries, service: PostService? = null, access: Access
     else response.body(withAccountHeader(response.bodyString(), session, request.uri.path))
 } })
 
-private fun contentRoutes(queries: PostQueries, service: PostService?, access: AccessControl?, accounts: Accounts?, accountService: AccountService?, follows: FollowService?, googleIdentities: GoogleIdentities?, threads: CommentThreads?, uploadClock: java.time.Clock): RoutingHttpHandler = routes(
+private fun contentRoutes(queries: PostQueries, service: PostService?, access: AccessControl?, accounts: Accounts?, accountService: AccountService?, follows: FollowService?, googleIdentities: GoogleIdentities?, threads: CommentThreads?, uploadClock: java.time.Clock, hashtagFollows: HashtagFollowService?): RoutingHttpHandler = routes(
     "/profiles/{id}" bind Method.GET to { request ->
         try {
             val id = UserId.parse(request.path("id")!!)
@@ -179,6 +179,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
             val count = queries.hashtagPostCount(tag, viewer)
             val content = buildString {
                 append("<h1>#${escapeHtml(tag.value)}</h1><p>$count ${if (count == 1L) "post" else "posts"}</p>")
+                if (session != null && hashtagFollows != null) append(hashtagFollowControl(tag, tag in hashtagFollows.followed(session.accountId), session))
                 append("<nav class=\"feed-tabs\" aria-label=\"Hashtag feed tabs\">")
                 append(listOf("latest" to "Latest", "popular" to "Popular", "foryou" to "For you").joinToString(" ") { (value, label) ->
                     val target = if (value == "latest") href else "$href?view=$value"
