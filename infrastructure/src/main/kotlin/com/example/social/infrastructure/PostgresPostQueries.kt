@@ -3,11 +3,73 @@ package com.example.social.infrastructure
 import com.example.social.application.*
 import com.example.social.domain.*
 import java.time.OffsetDateTime
+import java.time.Instant
 import java.sql.Timestamp
 import java.util.UUID
 import javax.sql.DataSource
 
 class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
+    override fun searchHashtags(query: String, limit: Int, offset: Int, viewer: UserId?): List<HashtagCount> {
+        require(limit in 1..50) { "limit must be between 1 and 50" }
+        require(offset >= 0) { "offset must not be negative" }
+        val pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        return dataSource.connection.use { connection ->
+            connection.prepareStatement("""
+                SELECT h.name, COUNT(p.id) AS posts FROM hashtags h
+                JOIN post_hashtags ph ON ph.hashtag_id = h.id
+                JOIN posts p ON p.id = ph.post_id AND ${postVisibilitySql()}
+                WHERE h.name LIKE ? ESCAPE '\'
+                GROUP BY h.name ORDER BY posts DESC, h.name LIMIT ? OFFSET ?
+            """.trimIndent()).use { statement ->
+                statement.setObject(1, viewer?.value)
+                statement.setString(2, pattern)
+                statement.setInt(3, limit)
+                statement.setInt(4, offset)
+                statement.executeQuery().use { rows -> buildList { while (rows.next()) add(HashtagCount(rows.getString(1), rows.getLong(2))) } }
+            }
+        }
+    }
+
+    override fun hashtagPostCount(tag: Hashtag, viewer: UserId?): Long = dataSource.connection.use { connection ->
+        connection.prepareStatement("""
+            SELECT COUNT(p.id) FROM post_hashtags ph
+            JOIN hashtags h ON h.id = ph.hashtag_id
+            JOIN posts p ON p.id = ph.post_id AND ${postVisibilitySql()}
+            WHERE h.name = ?
+        """.trimIndent()).use { statement ->
+            statement.setObject(1, viewer?.value)
+            statement.setString(2, tag.value)
+            statement.executeQuery().use { rows -> rows.next(); rows.getLong(1) }
+        }
+    }
+
+    override fun trending(limit: Int, window: TrendWindow, now: Instant): List<TrendingHashtag> {
+        require(limit in 1..50) { "limit must be between 1 and 50" }
+        val since = Timestamp.from(now.minus(window.length))
+        val previousSince = Timestamp.from(now.minus(window.length).minus(window.length))
+        return dataSource.connection.use { connection ->
+            connection.prepareStatement("""
+                SELECT h.name,
+                    COUNT(*) FILTER (WHERE p.created_at > ?) AS posts,
+                    COUNT(*) FILTER (WHERE p.created_at <= ?) AS previous
+                FROM post_hashtags ph
+                JOIN hashtags h ON h.id = ph.hashtag_id
+                JOIN posts p ON p.id = ph.post_id
+                WHERE p.visibility = 'public' AND p.created_at > ?
+                GROUP BY h.name
+                HAVING COUNT(*) FILTER (WHERE p.created_at > ?) > 0
+                ORDER BY posts DESC, h.name LIMIT ?
+            """.trimIndent()).use { statement ->
+                statement.setTimestamp(1, since)
+                statement.setTimestamp(2, since)
+                statement.setTimestamp(3, previousSince)
+                statement.setTimestamp(4, since)
+                statement.setInt(5, limit)
+                statement.executeQuery().use { rows -> buildList { while (rows.next()) add(TrendingHashtag(rows.getString(1), rows.getLong(2), rows.getLong(3))) } }
+            }
+        }
+    }
+
     override fun trendingHashtags(limit: Int): List<HashtagCount> {
         require(limit in 1..50) { "limit must be between 1 and 50" }
         return dataSource.connection.use { connection ->

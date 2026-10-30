@@ -1,6 +1,7 @@
 package com.example.social.application
 
 import com.example.social.domain.*
+import java.time.Duration
 import java.time.Instant
 
 data class PostCursor(val createdAt: Instant, val id: PostId)
@@ -23,6 +24,22 @@ data class PostSummary(
 
 data class FeedPage(val posts: List<PostSummary>, val next: PostCursor?)
 data class HashtagCount(val name: String, val posts: Long)
+
+enum class TrendWindow(val length: Duration) {
+    DAY(Duration.ofHours(24)), WEEK(Duration.ofDays(7));
+
+    companion object {
+        fun parse(value: String): TrendWindow = when (value) {
+            "24h" -> DAY
+            "7d" -> WEEK
+            else -> throw IllegalArgumentException("Invalid trend period")
+        }
+    }
+}
+
+data class TrendingHashtag(val name: String, val posts: Long, val previousPosts: Long) {
+    val growthPercent: Long? get() = if (previousPosts == 0L) null else (posts - previousPosts) * 100 / previousPosts
+}
 data class CommentCursor(val createdAt: Instant, val id: CommentId)
 data class CommentPage(val comments: List<Comment>, val next: CommentCursor?)
 
@@ -34,4 +51,7 @@ interface PostQueries {
     fun feed(limit: Int, before: PostCursor? = null, viewer: UserId? = null, tag: Hashtag? = null, author: UserId? = null): FeedPage
     fun comments(post: PostId, limit: Int, after: CommentCursor? = null): CommentPage
     fun trendingHashtags(limit: Int): List<HashtagCount> = emptyList()
+    fun trending(limit: Int, window: TrendWindow, now: Instant): List<TrendingHashtag> = emptyList()
+    fun searchHashtags(query: String, limit: Int, offset: Int, viewer: UserId?): List<HashtagCount> = emptyList()
+    fun hashtagPostCount(tag: Hashtag, viewer: UserId?): Long = 0
 }
