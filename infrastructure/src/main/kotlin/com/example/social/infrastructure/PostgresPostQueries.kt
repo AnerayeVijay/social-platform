@@ -5,8 +5,18 @@ import com.example.social.domain.*
 import java.time.OffsetDateTime
 import java.time.Instant
 import java.sql.Timestamp
+import java.sql.ResultSet
 import java.util.UUID
 import javax.sql.DataSource
+
+private val SUMMARY_COLUMNS = """
+  ARRAY(SELECT h.name FROM hashtags h JOIN post_hashtags ph ON ph.hashtag_id = h.id WHERE ph.post_id = p.id) AS tags,
+  (SELECT count(*) FROM post_likes l WHERE l.post_id = p.id) AS like_count,
+  (SELECT count(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
+  (SELECT count(*) FROM post_images i WHERE i.post_id = p.id) AS image_count,
+  ARRAY(SELECT i.media_type FROM post_images i WHERE i.post_id = p.id ORDER BY i.position) AS media_types,
+  EXISTS(SELECT 1 FROM post_likes l WHERE l.post_id = p.id AND l.user_id = ?) AS liked
+""".trimIndent()
 
 class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
     override fun searchHashtags(query: String, limit: Int, offset: Int, viewer: UserId?): List<HashtagCount> {
@@ -129,13 +139,7 @@ class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
             if (following) conditions += "(p.author_id = ? OR EXISTS (SELECT 1 FROM member_follows f WHERE f.follower_id = ? AND f.followed_id = p.author_id AND f.status = 'accepted'))"
             val where = if (conditions.isEmpty()) "" else "WHERE " + conditions.joinToString(" AND ")
             connection.prepareStatement("""
-                SELECT p.*,
-                  ARRAY(SELECT h.name FROM hashtags h JOIN post_hashtags ph ON ph.hashtag_id = h.id WHERE ph.post_id = p.id) AS tags,
-                  (SELECT count(*) FROM post_likes l WHERE l.post_id = p.id) AS like_count,
-                  (SELECT count(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
-                  (SELECT count(*) FROM post_images i WHERE i.post_id = p.id) AS image_count,
-                  ARRAY(SELECT i.media_type FROM post_images i WHERE i.post_id = p.id ORDER BY i.position) AS media_types,
-                  EXISTS(SELECT 1 FROM post_likes l WHERE l.post_id = p.id AND l.user_id = ?) AS liked
+                SELECT p.*, $SUMMARY_COLUMNS
                 FROM posts p $where
                 ORDER BY p.created_at DESC, p.id DESC LIMIT ?
             """.trimIndent()).use { statement ->
@@ -154,23 +158,61 @@ class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
                     statement.setObject(index++, viewer.value)
                 }
                 statement.setInt(index, limit + 1)
-                val posts = statement.executeQuery().use { rows ->
-                    buildList {
-                        while (rows.next()) add(PostSummary(
-                            PostId(rows.getObject("id", UUID::class.java)),
-                            UserId(rows.getObject("author_id", UUID::class.java)),
-                            rows.getString("body"),
-                            rows.getObject("created_at", OffsetDateTime::class.java).toInstant(),
-                            (rows.getArray("tags").array as Array<*>).map { Hashtag(it as String) }.toSet(),
-                            rows.getLong("like_count"), rows.getLong("comment_count"), rows.getBoolean("liked"), PostVisibility.parse(rows.getString("visibility")),
-                            PostFont.parse(rows.getString("font")), PostSize.parse(rows.getString("size")), rows.getInt("image_count"),
-                            (rows.getArray("media_types").array as Array<*>).map { it as String }
-                        ))
-                    }
-                }
+                val posts = statement.executeQuery().use { rows -> buildList { while (rows.next()) add(rows.summary()) } }
                 val page = posts.take(limit)
                 FeedPage(page, if (posts.size > limit) page.last().let { PostCursor(it.createdAt, it.id) } else null)
             }
         }
     }
+
+    override fun forYou(viewer: UserId, limit: Int, before: ForYouCursor?, tag: Hashtag): ForYouPage {
+        require(limit in 1..100) { "limit must be between 1 and 100" }
+        return dataSource.connection.use { connection ->
+            val cursor = if (before == null) "" else "WHERE ranked.followed_rank < ? OR (ranked.followed_rank = ? AND (ranked.created_at, ranked.id) < (?, ?))"
+            connection.prepareStatement("""
+                SELECT p.*, ranked.followed_rank, $SUMMARY_COLUMNS
+                FROM (
+                  SELECT p.id, p.created_at, CASE WHEN EXISTS (SELECT 1 FROM member_follows f WHERE f.follower_id = ? AND f.followed_id = p.author_id AND f.status = 'accepted') THEN 1 ELSE 0 END AS followed_rank
+                  FROM posts p
+                  JOIN post_hashtags ph ON ph.post_id = p.id
+                  JOIN hashtags h ON h.id = ph.hashtag_id
+                  WHERE h.name = ? AND ${postVisibilitySql()}
+                ) ranked
+                JOIN posts p ON p.id = ranked.id
+                $cursor
+                ORDER BY ranked.followed_rank DESC, ranked.created_at DESC, ranked.id DESC LIMIT ?
+            """.trimIndent()).use { statement ->
+                var index = 1
+                statement.setObject(index++, viewer.value)
+                statement.setObject(index++, viewer.value)
+                statement.setString(index++, tag.value)
+                statement.setObject(index++, viewer.value)
+                if (before != null) {
+                    val rank = if (before.followed) 1 else 0
+                    statement.setInt(index++, rank)
+                    statement.setInt(index++, rank)
+                    statement.setTimestamp(index++, Timestamp.from(before.createdAt))
+                    statement.setObject(index++, before.id.value)
+                }
+                statement.setInt(index, limit + 1)
+                val rows = statement.executeQuery().use { rs ->
+                    buildList { while (rs.next()) add(rs.summary() to (rs.getInt("followed_rank") == 1)) }
+                }
+                val page = rows.take(limit)
+                val next = if (rows.size > limit) page.last().let { (post, followed) -> ForYouCursor(followed, post.createdAt, post.id) } else null
+                ForYouPage(page.map { it.first }, next)
+            }
+        }
+    }
+
+    private fun ResultSet.summary() = PostSummary(
+        PostId(getObject("id", UUID::class.java)),
+        UserId(getObject("author_id", UUID::class.java)),
+        getString("body"),
+        getObject("created_at", OffsetDateTime::class.java).toInstant(),
+        (getArray("tags").array as Array<*>).map { Hashtag(it as String) }.toSet(),
+        getLong("like_count"), getLong("comment_count"), getBoolean("liked"), PostVisibility.parse(getString("visibility")),
+        PostFont.parse(getString("font")), PostSize.parse(getString("size")), getInt("image_count"),
+        (getArray("media_types").array as Array<*>).map { it as String }
+    )
 }

@@ -1,6 +1,6 @@
 package com.example.social.infrastructure
 
-import com.example.social.application.TrendWindow
+import com.example.social.application.*
 import com.example.social.application.TrendingHashtag
 import com.example.social.domain.*
 import com.zaxxer.hikari.HikariConfig
@@ -11,6 +11,7 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -68,6 +69,30 @@ class PostgresHashtagQueriesTest {
             repository.save(Post.publish(UserId.new(), "#firstseen"))
             val stored = queryTimestamp(dataSource, "SELECT created_at FROM hashtags WHERE name = 'firstseen'")
             assertTrue(stored != null && stored.isAfter(before))
+        }
+    }
+
+    @Test fun `for you lists followed members first then others, newest first, across pages`() {
+        withDatabase { repository, queries, dataSource ->
+            val accounts = PostgresAccounts(dataSource)
+            val viewer = Account(UserId.new(), "viewer@example.com", "Viewer", null, true).also(accounts::create)
+            val friend = Account(UserId.new(), "friend@example.com", "Friend", null, true).also(accounts::create)
+            val stranger = Account(UserId.new(), "stranger@example.com", "Stranger", null, true).also(accounts::create)
+            FollowService(accounts, PostgresFollows(dataSource)).apply {
+                request(viewer.id, friend.id)
+                accept(friend.id, viewer.id)
+            }
+            val now = Instant.now()
+            val friendNewer = repository.save(Post.publish(friend.id, "#cricket", now = now.minusSeconds(7200)))
+            val friendOlder = repository.save(Post.publish(friend.id, "#cricket", now = now.minusSeconds(10800)))
+            val strangerNewer = repository.save(Post.publish(stranger.id, "#cricket", now = now.minusSeconds(3600)))
+            val strangerOlder = repository.save(Post.publish(stranger.id, "#cricket", now = now.minusSeconds(14400)))
+            val first = queries.forYou(viewer.id, 2, null, Hashtag("cricket"))
+            assertEquals(listOf(friendNewer.id, friendOlder.id), first.posts.map { it.id })
+            assertNotNull(first.next)
+            val second = queries.forYou(viewer.id, 2, first.next, Hashtag("cricket"))
+            assertEquals(listOf(strangerNewer.id, strangerOlder.id), second.posts.map { it.id })
+            assertNull(second.next)
         }
     }
 

@@ -23,6 +23,8 @@ data class PostSummary(
 )
 
 data class FeedPage(val posts: List<PostSummary>, val next: PostCursor?)
+data class ForYouCursor(val followed: Boolean, val createdAt: Instant, val id: PostId)
+data class ForYouPage(val posts: List<PostSummary>, val next: ForYouCursor?)
 data class HashtagCount(val name: String, val posts: Long)
 
 enum class TrendWindow(val length: Duration) {
@@ -54,4 +56,6 @@ interface PostQueries {
     fun trending(limit: Int, window: TrendWindow, now: Instant): List<TrendingHashtag> = emptyList()
     fun searchHashtags(query: String, limit: Int, offset: Int, viewer: UserId?): List<HashtagCount> = emptyList()
     fun hashtagPostCount(tag: Hashtag, viewer: UserId?): Long = 0
+    fun forYou(viewer: UserId, limit: Int, before: ForYouCursor? = null, tag: Hashtag): ForYouPage =
+        throw UnsupportedOperationException("For you feed is not configured")
 }
