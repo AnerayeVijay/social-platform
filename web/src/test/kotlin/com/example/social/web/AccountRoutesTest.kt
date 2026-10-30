@@ -5,6 +5,7 @@ import com.example.social.http.*
 import com.example.social.application.*
 import com.example.social.domain.UserId
 import org.http4k.core.*
+import org.jsoup.Jsoup
 import java.time.Instant
 import kotlin.test.*
 
@@ -33,6 +34,14 @@ class AccountRoutesTest {
         val app = accountRoutes(service, accounts, sessions, AccessControl(sessions, false), false)
         val page = app(Request(Method.GET, "/login"))
         assertEquals(Status.OK, page.status)
+        val google = assertNotNull(Jsoup.parse(page.bodyString()).selectFirst("a[href=/auth/google]"))
+        assertEquals("Continue with Google", google.text())
+        val logo = assertNotNull(google.selectFirst("svg"), "Google sign-in should include its logo")
+        assertEquals("true", logo.attr("aria-hidden"))
+        assertEquals("false", logo.attr("focusable"))
+        assertEquals("18", logo.attr("width"))
+        assertEquals("18", logo.attr("height"))
+        assertEquals(setOf("#4285F4", "#34A853", "#FBBC05", "#EA4335"), logo.select("path[fill]").map { it.attr("fill") }.toSet())
         val csrfCookie = page.header("Set-Cookie")!!.substringBefore(';')
         val csrf = csrfCookie.substringAfter('=')
         fun login(token: String) = app(Request(Method.POST, "/login").header("content-type", "application/x-www-form-urlencoded")
