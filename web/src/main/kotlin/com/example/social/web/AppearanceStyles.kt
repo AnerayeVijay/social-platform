@@ -22,7 +22,7 @@ internal val appearanceStyles = """
     .profile-avatar{border-color:var(--surface)!important}.profile-intro{border-top-color:var(--soft)}
     .profile-bio{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink)}
     input,textarea,select,.composer textarea,.language-selector select{background:var(--field);color:var(--ink);border-color:var(--line)}
-    label,.brand-tagline,.aside-note,.eyebrow,.site-footer,.nav-link,.mobile-nav a,.follow-navigation a,.post-footer,.post-footer a{color:var(--muted)}
+    label,.aside-note,.eyebrow,.site-footer,.nav-link,.mobile-nav a,.follow-navigation a,.post-footer,.post-footer a{color:var(--muted)}
     .button,button{color:var(--button-ink)}
     .button:hover,button:hover{background:var(--soft);border-color:var(--teal);color:var(--teal)}
     .feed-tabs .button{color:var(--muted)}.feed-tabs .button[aria-current=page]{color:var(--teal)}
