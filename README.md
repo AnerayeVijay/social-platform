@@ -124,6 +124,10 @@ The home feed has **All posts** and **Following** tabs. Following requires sign-
 your own posts plus posts from members who accepted your request, newest first. Approval includes
 their existing posts. Hashtag filters and pagination work within the selected tab.
 
+Signed-in members also get **My posts**, which lists only posts you wrote (Public, Members-only,
+and Private), newest first, with images, fonts, sizes, and comment links. It is about your own
+posts, not who you follow, and does not change notifications. Comments stay on each post's page.
+
 Profiles show **Request to follow**, **Cancel request**, or **Unfollow**. Signed-in feed and
 profile pages link to incoming requests (with a count), followers, and following. Members can
 accept/reject requests, cancel pending requests, unfollow, and remove approved followers.

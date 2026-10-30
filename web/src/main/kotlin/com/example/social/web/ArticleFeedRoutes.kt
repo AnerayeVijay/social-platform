@@ -33,7 +33,7 @@ fun articleFeedWebRoutes(service: ArticleFeedService?, access: AccessControl?): 
             val sources = feeds.list(session.accountId)
             htmlPage("News & Articles", buildString {
                 append("<section class=\"intro\"><h1>News &amp; Articles</h1><p>All your sources, together. Read an abstract, then visit the original article.</p></section>")
-                append("<nav class=\"feed-tabs\" aria-label=\"Feed tabs\"><a class=\"button\" href=\"/?scope=all\">All posts</a> <a class=\"button\" href=\"/?scope=following\">Following</a> <a class=\"button\" href=\"/me/articles\" aria-current=\"page\">News &amp; Articles</a></nav>")
+                append(feedTabs("news", signedIn = true))
                 append("<details class=\"card\"${if (sources.isEmpty()) " open" else ""}><summary>Manage feeds</summary><h2>${if (sources.isEmpty()) "Add your first feed" else "Your sources"}</h2>")
                 append("<p>Add a public RSS or Atom feed URL, not an article page. Sources refresh on visits, at most once every 15 minutes.</p>")
                 sources.forEach { source ->

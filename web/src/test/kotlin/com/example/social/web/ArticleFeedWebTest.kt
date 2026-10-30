@@ -87,6 +87,24 @@ class ArticleFeedWebTest {
         assertEquals(Status.BAD_REQUEST, get(path = "/me/articles?before=not-a-date%7C${UUID.randomUUID()}").status)
     }
 
+    @Test fun `news tab lists My posts between Following and News`() {
+        val owner = UserId.new()
+        val sessions = object : Sessions {
+            override fun find(digest: String, now: Instant) = Session(digest, owner, "csrf", now.plusSeconds(60))
+            override fun create(session: Session) = Unit
+            override fun delete(digest: String) = Unit
+            override fun deleteForAccount(id: UserId) = Unit
+        }
+        val repository = WebArticleFeeds()
+        val app = webRoutes(object : PostQueries {
+            override fun feed(limit: Int, before: PostCursor?, viewer: UserId?, tag: Hashtag?, author: UserId?) = FeedPage(emptyList(), null)
+            override fun comments(post: PostId, limit: Int, after: CommentCursor?) = CommentPage(emptyList(), null)
+        }, access = com.example.social.http.AccessControl(sessions, false), articleFeeds = ArticleFeedService(repository, content = repository))
+        val tabs = Jsoup.parse(app(Request(Method.GET, "/me/articles").header("Cookie", "session=reader")).bodyString()).select(".feed-tabs a")
+        assertEquals(listOf("All posts", "Following", "My posts", "News & Articles"), tabs.map { it.text() })
+        assertEquals("/?scope=mine", tabs[2].attr("href"))
+    }
+
     @Test fun `community feed links to one combined news and articles tab`() {
         val queries = object : PostQueries {
             override fun feed(limit: Int, before: PostCursor?, viewer: UserId?, tag: Hashtag?, author: UserId?) = FeedPage(emptyList(), null)

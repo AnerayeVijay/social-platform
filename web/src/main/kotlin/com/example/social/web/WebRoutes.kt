@@ -152,17 +152,19 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                 "all" -> queries.feed(20, cursor, viewer = session?.accountId, tag = tag)
                 "following" -> if (session == null) return@to Response(Status.UNAUTHORIZED).body("Sign in to continue")
                     else queries.followingFeed(session.accountId, 20, cursor, tag)
+                "mine" -> if (session == null) return@to Response(Status.UNAUTHORIZED).body("Sign in to continue")
+                    else queries.feed(20, cursor, viewer = session.accountId, tag = tag, author = session.accountId)
                 else -> throw IllegalArgumentException("Invalid feed scope")
             }
             val title = tag?.let { "#${it.value}" } ?: "Your community, in conversation."
             val content = buildString {
                 append("<section class=\"intro\"><span class=\"eyebrow\">THE COMMUNITY FEED</span><h1>${escapeHtml(title)}</h1><p>Fresh ideas, small discoveries, and conversations worth having.</p></section>")
                 val tagFilter = tag?.let { "&amp;tag=${encode(it.value)}" }.orEmpty()
-                append("<nav class=\"feed-tabs\" aria-label=\"Feed tabs\"><a class=\"button\" href=\"/?scope=all$tagFilter\"${if (scope == "all") " aria-current=\"page\"" else ""}>All posts</a> <a class=\"button\" href=\"/?scope=following$tagFilter\"${if (scope == "following") " aria-current=\"page\"" else ""}>Following</a> <a class=\"button\" href=\"/me/articles\">News &amp; Articles</a></nav>")
+                append(feedTabs(scope, session != null, tagFilter))
                 if (session != null && follows != null) append(followNavigation(follows, session))
                 if (session != null) append("<details class=\"create-post\"><summary class=\"button\"><span aria-hidden=\"true\">＋</span> <span>Create post</span></summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What would you like to share?\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${styleSelectors()}${composerImages()}<p><button class=\"button\" type=\"submit\">Publish post</button></p></form></section></details>")
                 else append("<section class=\"card\"><strong>Join the conversation</strong><p><a class=\"button\" href=\"/login\">Sign in</a> <a href=\"/register\">Create an account</a></p></section>")
-                if (page.posts.isEmpty()) append("<section class=\"card empty\"><h2>No posts yet</h2><p>${if (scope == "following") "Follow members and wait for approval to see their posts here. Your own posts also appear here." else "This space is ready for its first conversation."}</p><a href=\"/\">Back to all posts</a></section>")
+                if (page.posts.isEmpty()) append("<section class=\"card empty\"><h2>No posts yet</h2><p>${when (scope) { "following" -> "Follow members and wait for approval to see their posts here. Your own posts also appear here."; "mine" -> "You have not published any posts yet."; else -> "This space is ready for its first conversation." }}</p><a href=\"/\">Back to all posts</a></section>")
                 page.posts.forEach { post -> append(postCard(post, session, accounts)) }
                 page.next?.let {
                     val filter = tag?.let { value -> "&amp;tag=${encode(value.value)}" } ?: ""
@@ -175,6 +177,13 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
         }
     }
 )
+
+internal fun feedTabs(current: String, signedIn: Boolean, tagFilter: String = ""): String {
+    fun tab(scope: String, label: String, href: String = "/?scope=$scope$tagFilter") =
+        "<a class=\"button\" href=\"$href\"${if (scope == current) " aria-current=\"page\"" else ""}>$label</a>"
+    val mine = if (signedIn) " ${tab("mine", "My posts")}" else ""
+    return "<nav class=\"feed-tabs\" aria-label=\"Feed tabs\">${tab("all", "All posts")} ${tab("following", "Following")}$mine ${tab("news", "News &amp; Articles", "/me/articles")}</nav>"
+}
 
 private fun postCard(post: PostSummary, session: Session? = null, accounts: Accounts? = null): String {
     val author = accounts?.byId(post.authorId)
