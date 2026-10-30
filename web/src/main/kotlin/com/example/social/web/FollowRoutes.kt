@@ -11,6 +11,14 @@ import java.nio.charset.StandardCharsets.UTF_8
 internal fun followForm(id: UserId, action: String, label: String, session: Session): String =
     "<form action=\"/web/follows/${id.value}/$action\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button class=\"button\" type=\"submit\">$label</button></form>"
 
+internal fun trendsCard(queries: PostQueries): String {
+    val tags = queries.trendingHashtags(5)
+    if (tags.isEmpty()) return ""
+    return "<section class=\"card trends\"><h2>What's happening</h2>" +
+        tags.joinToString("") { "<div class=\"trend\"><a href=\"/?tag=${escapeHtml(it.name)}\">#${escapeHtml(it.name)}</a><span>${it.posts} ${if (it.posts == 1L) "post" else "posts"}</span></div>" } +
+        "</section>"
+}
+
 internal fun suggestionsCard(service: FollowService, session: Session): String {
     val members = service.suggestions(session.accountId)
     if (members.isEmpty()) return ""

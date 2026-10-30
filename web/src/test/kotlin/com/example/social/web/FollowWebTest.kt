@@ -201,6 +201,7 @@ internal class FollowWebFixture(private val extraMembers: List<Account> = emptyL
         override fun followingFeed(viewer: UserId, limit: Int, before: PostCursor?, tag: Hashtag?, author: UserId?) =
             FeedPage(feed(limit, before, viewer, tag, author).posts.filter { it.authorId == viewer || follows.state(viewer, it.authorId) == FollowState.ACCEPTED }, null)
         override fun comments(post: PostId, limit: Int, after: CommentCursor?) = CommentPage(emptyList(), null)
+        override fun trendingHashtags(limit: Int) = listOf(HashtagCount("kotlin", 1))
     }
     val app = access.protect(webRoutes(queries, access = access, accounts = accounts, follows = follows))
     fun get(path: String, who: String = "alice") = app(Request(Method.GET, path).header("Cookie", "session=$who"))

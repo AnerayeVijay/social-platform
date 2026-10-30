@@ -179,7 +179,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                     append("<nav class=\"pagination\" aria-label=\"Feed pagination\"><a class=\"button\" href=\"/?before=${encode(encodePostCursor(it))}&amp;scope=$scope$filter\">Older posts &rarr;</a></nav>")
                 }
             }
-            htmlPage("Community feed", content, rail = if (session != null && follows != null) suggestionsCard(follows, session) else "")
+            htmlPage("Community feed", content, rail = trendsCard(queries) + if (session != null && follows != null) suggestionsCard(follows, session) else "")
         } catch (_: IllegalArgumentException) {
             htmlPage("Invalid filter", "<section class=\"card\"><h1>Invalid feed filter</h1><p>Check the hashtag or pagination link.</p><a href=\"/\">Return to feed</a></section>", Status.BAD_REQUEST)
         }
