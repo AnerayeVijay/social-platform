@@ -204,6 +204,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
             val trends = queries.trending(20, window, Instant.now())
             val content = buildString {
                 append("<h1>Explore</h1><p>Trending hashtags and the latest conversations.</p>")
+                if (session != null) append("<p><a href=\"/following/hashtags\">Hashtags you follow &rarr;</a></p>")
                 append("<nav class=\"feed-tabs\" aria-label=\"Trend period\">")
                 append(listOf("24h" to "Last 24 hours", "7d" to "Last 7 days").joinToString(" ") { (value, label) ->
                     "<a class=\"button\" href=\"/explore?period=$value\"${if (value == period) " aria-current=\"page\"" else ""}>$label</a>"
