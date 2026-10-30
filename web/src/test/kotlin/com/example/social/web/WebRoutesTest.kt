@@ -133,6 +133,7 @@ class WebRoutesTest {
         val document = Jsoup.parse(app(Request(Method.GET, "/").header("Cookie", "session=valid")).bodyString())
         val composer = document.selectFirst(".create-post")!!
         assertEquals("Share your thoughts ...", composer.selectFirst("summary")!!.text())
+        assertTrue(composer.selectFirst("summary")!!.children().isEmpty())
         assertEquals("Share your thoughts ...", composer.selectFirst("textarea[name=body]")!!.attr("placeholder"))
         val tools = composer.selectFirst(".composer-tools")!!
         assertNotNull(tools.selectFirst("button[data-attach=post-images]"))
