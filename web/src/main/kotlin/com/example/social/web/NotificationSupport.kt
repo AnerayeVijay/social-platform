@@ -7,6 +7,7 @@ import com.example.social.notifications.NotificationKind
 import com.example.social.notifications.Notifications
 import org.http4k.core.HttpHandler
 import org.jsoup.Jsoup
+import org.jsoup.nodes.DataNode
 
 private const val RECENT_COUNT = 10
 
@@ -65,7 +66,7 @@ fun notificationSupport(next: HttpHandler, notifications: Notifications, access:
     else {
         val document = Jsoup.parse(withAccountHeader(response.bodyString(), session))
         document.outputSettings().prettyPrint(false)
-        document.head().appendElement("style").attr("id", "notification-styles").appendText(notificationStyles)
+        document.head().appendElement("style").attr("id", "notification-styles").appendChild(DataNode(notificationStyles))
         val container = document.selectFirst(".account-controls") ?: document.selectFirst(".topbar-inner") ?: document.body()
         container.prepend(bell(notifications, session))
         response.body(document.outerHtml())
