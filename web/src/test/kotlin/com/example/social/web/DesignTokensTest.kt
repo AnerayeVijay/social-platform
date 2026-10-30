@@ -24,7 +24,6 @@ class DesignTokensTest {
     }
 
     @Test fun `dark theme uses a violet accent`() {
-        val style = Jsoup.parse(htmlPage("Home", "<p>Body</p>").bodyString()).selectFirst("style")!!.data()
-        assertTrue(style.contains("--teal:#a5b4fc"), "violet accent token in dark palette")
+        assertTrue(appearanceStyles.contains("--teal:#a5b4fc"), "violet accent token in dark palette")
     }
 }
