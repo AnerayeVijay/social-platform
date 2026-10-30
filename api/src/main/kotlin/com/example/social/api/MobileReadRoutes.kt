@@ -27,13 +27,7 @@ fun mobileReadRoutes(queries: PostQueries, accounts: Accounts, access: AccessCon
                 "following" -> queries.followingFeed(viewer ?: throw AuthenticationFailed(), limit, before, tag, author)
                 else -> throw IllegalArgumentException("Invalid feed scope")
             }
-            apiJson(mapOf("posts" to page.posts.map { post -> mapOf(
-                "id" to post.id.value.toString(), "authorId" to post.authorId.value.toString(), "body" to post.body,
-                "createdAt" to post.createdAt.toString(), "hashtags" to post.hashtags.map { it.value }.sorted(),
-                "likeCount" to post.likeCount, "commentCount" to post.commentCount, "likedByViewer" to post.likedByViewer, "visibility" to post.visibility.name.lowercase(),
-                "font" to post.font.name.lowercase(), "size" to post.size.name.lowercase(),
-                "attachments" to attachmentDescriptors("/api/posts/${post.id.value}/attachments", post.mediaTypes)
-            ) }, "next" to page.next?.let(::encodePostCursor)))
+            feedResponse(page)
         }
     },
     "/api/posts/{id}/comments" bind Method.GET to { request ->
@@ -60,6 +54,14 @@ fun mobileReadRoutes(queries: PostQueries, accounts: Accounts, access: AccessCon
         }
     }
 )
+
+internal fun feedResponse(page: FeedPage): Response = apiJson(mapOf("posts" to page.posts.map { post -> mapOf(
+    "id" to post.id.value.toString(), "authorId" to post.authorId.value.toString(), "body" to post.body,
+    "createdAt" to post.createdAt.toString(), "hashtags" to post.hashtags.map { it.value }.sorted(),
+    "likeCount" to post.likeCount, "commentCount" to post.commentCount, "likedByViewer" to post.likedByViewer, "visibility" to post.visibility.name.lowercase(),
+    "font" to post.font.name.lowercase(), "size" to post.size.name.lowercase(),
+    "attachments" to attachmentDescriptors("/api/posts/${post.id.value}/attachments", post.mediaTypes)
+) }, "next" to page.next?.let(::encodePostCursor)))
 
 internal fun apiSafely(action: () -> Response): Response = try { action() }
 catch (_: AuthenticationFailed) { apiJson(mapOf("error" to "Authentication failed"), Status.UNAUTHORIZED) }
