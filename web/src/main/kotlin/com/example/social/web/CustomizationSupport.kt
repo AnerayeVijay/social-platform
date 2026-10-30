@@ -27,6 +27,7 @@ fun customizationSupport(next: HttpHandler, customization: CustomizationService,
             document.selectFirst(".topbar")?.addClass("custom-header")?.attr("style", "--member-header: url('/media/header?v=$version')")
         }
         if (session != null) {
+            document.selectFirst(".account-avatar")?.text(memberInitials(accounts.byId(session.accountId)?.displayName ?: "Community member"))
             (document.selectFirst(".account-controls") ?: document.selectFirst(".topbar-inner"))
                 ?.appendElement("a")?.attr("href", "/settings")?.attr("class", "settings-link")?.text("Settings")
         }

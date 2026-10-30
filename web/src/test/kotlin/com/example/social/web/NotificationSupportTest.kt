@@ -18,7 +18,7 @@ class NotificationSupportTest {
         assertEquals("1", page.selectFirst(".notification-badge")!!.text())
         assertEquals("O'Hara <i>", page.selectFirst(".notification-panel .notification-actor")!!.text())
         assertEquals("csrf", page.selectFirst(".notification-panel input[name=csrf]")!!.attr("value"))
-        assertEquals("/logout", page.selectFirst(".account-controls form[action=/logout]")!!.attr("action"))
+        assertEquals("/logout", page.selectFirst(".sidebar form[action=/logout]")!!.attr("action"))
         assertEquals("Notifications", page.selectFirst(".notification-bell summary")!!.attr("aria-label"))
     }
 
