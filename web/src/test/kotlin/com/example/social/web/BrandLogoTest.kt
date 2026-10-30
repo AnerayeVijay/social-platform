@@ -20,6 +20,11 @@ class BrandLogoTest {
         assertFalse(html.contains("Onely"))
     }
 
+    @Test fun `the header shows the tagline beside the logo`() {
+        val header = Jsoup.parse(htmlPage("Home", "<main>x</main>").bodyString()).selectFirst("header.topbar")!!
+        assertEquals("Let's talk about it.", header.selectFirst(".brand-tagline")!!.text())
+    }
+
     @Test fun `the bubble icon is served as the favicon`() {
         val html = htmlPage("Home", "<main>x</main>").bodyString()
         assertEquals("/assets/tallo-icon.png", Jsoup.parse(html).selectFirst("link[rel=icon]")!!.attr("href"))
