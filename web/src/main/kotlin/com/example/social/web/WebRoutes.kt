@@ -23,7 +23,7 @@ fun webRoutes(queries: PostQueries, service: PostService? = null, access: Access
         else original
     val session = access?.session(request)
     if (session == null || response.header("content-type")?.startsWith("text/html") != true) response
-    else response.body(withAccountHeader(response.bodyString(), session))
+    else response.body(withAccountHeader(response.bodyString(), session, request.uri.path))
 } })
 
 private fun contentRoutes(queries: PostQueries, service: PostService?, access: AccessControl?, accounts: Accounts?, accountService: AccountService?, follows: FollowService?, googleIdentities: GoogleIdentities?, threads: CommentThreads?, uploadClock: java.time.Clock): RoutingHttpHandler = routes(
@@ -239,9 +239,14 @@ private fun audienceSelector(id: String, selected: PostVisibility): String =
 private fun composer(session: Session): String =
     "<details class=\"create-post\"><summary class=\"button\"><span aria-hidden=\"true\">＋</span> <span>Create post</span></summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What would you like to share?\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${styleSelectors()}${mediaPicker("post-images", Post.MAX_IMAGES)}<p><button class=\"button\" type=\"submit\">Publish post</button></p></form></section></details><script>$mediaPickerScript</script>"
 
-internal fun withAccountHeader(html: String, session: Session): String {
+internal fun withAccountHeader(html: String, session: Session, path: String): String {
     if (html.contains("class=\"account-controls\"")) return html
-    val navigation = "<span class=\"avatar account-avatar\" aria-hidden=\"true\" translate=\"no\">♙</span><a class=\"nav-link\" href=\"/\">Home</a><a class=\"nav-link\" href=\"/members\">Find members</a><a class=\"nav-link\" href=\"/notifications\">Notifications</a><a class=\"nav-link\" href=\"/me/articles\">News &amp; Articles</a><a class=\"nav-link account-profile\" href=\"/profiles/${session.accountId.value}\">My profile</a><a class=\"nav-link\" href=\"/settings\">Settings</a>${composer(session)}"
+    fun link(href: String, label: String, extra: String = "") =
+        "<a class=\"nav-link$extra\" href=\"$href\"${if (href == path) " aria-current=\"page\"" else ""}>$label</a>"
+    val navigation = "<span class=\"avatar account-avatar\" aria-hidden=\"true\" translate=\"no\">♙</span>" +
+        link("/", "Home") + link("/members", "Find members") + link("/notifications", "Notifications") +
+        link("/me/articles", "News &amp; Articles") + link("/profiles/${session.accountId.value}", "My profile", " account-profile") +
+        link("/settings", "Settings") + composer(session)
     val signOut = "<form class=\"sidebar-signout\" action=\"/logout\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button type=\"submit\">Sign out</button></form>"
     return html.replaceFirst("</div></header>", "<nav class=\"account-controls\"></nav></div></header>")
         .replaceFirst("<nav class=\"account-navigation\" aria-label=\"Main navigation\">", "<nav class=\"account-navigation\" aria-label=\"Main navigation\">$navigation")

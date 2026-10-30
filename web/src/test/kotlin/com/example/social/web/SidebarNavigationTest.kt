@@ -4,6 +4,13 @@ import org.jsoup.Jsoup
 import kotlin.test.*
 
 class SidebarNavigationTest {
+    @Test fun `the current page is marked in the left navigation`() {
+        val f = CustomizationFixture()
+        val settings = Jsoup.parse(f.get("/").bodyString())
+        assertEquals("page", settings.selectFirst(".sidebar a[href='/']")!!.attr("aria-current"))
+        assertTrue(settings.select(".sidebar a[href='/settings']").first()!!.attr("aria-current").isEmpty())
+    }
+
     @Test fun `signed in members get the main pages in the left navigation`() {
         val f = CustomizationFixture()
         val navigation = assertNotNull(Jsoup.parse(f.get("/").bodyString()).selectFirst(".sidebar nav[aria-label='Main navigation']"))

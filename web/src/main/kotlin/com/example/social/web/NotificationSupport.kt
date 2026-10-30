@@ -64,7 +64,7 @@ fun notificationSupport(next: HttpHandler, notifications: Notifications, access:
     val session = if (response.header("content-type")?.startsWith("text/html") == true) access.session(request) else null
     if (session == null) response
     else {
-        val document = Jsoup.parse(withAccountHeader(response.bodyString(), session))
+        val document = Jsoup.parse(withAccountHeader(response.bodyString(), session, request.uri.path))
         document.outputSettings().prettyPrint(false)
         document.head().appendElement("style").attr("id", "notification-styles").appendChild(DataNode(notificationStyles))
         val container = document.selectFirst(".account-controls") ?: document.selectFirst(".topbar-inner") ?: document.body()

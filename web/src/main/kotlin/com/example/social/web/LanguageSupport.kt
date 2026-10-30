@@ -34,7 +34,7 @@ fun languageSupport(next: HttpHandler, accounts: Accounts, access: AccessControl
         if (response.header("content-type")?.startsWith("text/html") != true) response
         else {
             val csrf = session?.csrf ?: cookie(request, "language_csrf") ?: secureToken()
-            val document = Jsoup.parse(if (session == null) response.bodyString() else withAccountHeader(response.bodyString(), session))
+            val document = Jsoup.parse(if (session == null) response.bodyString() else withAccountHeader(response.bodyString(), session, request.uri.path))
             document.outputSettings().prettyPrint(false)
             document.selectFirst("html")?.attr("lang", language.code)
             if (session != null) document.selectFirst(".mobile-account")?.apply {
