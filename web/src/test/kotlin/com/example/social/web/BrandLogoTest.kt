@@ -19,4 +19,18 @@ class BrandLogoTest {
         assertEquals("TALLO", header.selectFirst("a.brand img")!!.attr("alt"))
         assertFalse(html.contains("Onely"))
     }
+
+    @Test fun `the bubble icon is served as the favicon`() {
+        val html = htmlPage("Home", "<main>x</main>").bodyString()
+        assertEquals("/assets/tallo-icon.png", Jsoup.parse(html).selectFirst("link[rel=icon]")!!.attr("href"))
+        val response = brandRoutes()(Request(Method.GET, "/assets/tallo-icon.png"))
+        assertEquals(Status.OK, response.status)
+        assertEquals("image/png", response.header("content-type"))
+    }
+
+    @Test fun `the side card uses the tagline and community copy`() {
+        val rail = Jsoup.parse(htmlPage("Home", "<main>x</main>").bodyString()).selectFirst(".sidebar-card")!!
+        assertEquals("Let's talk about it.", rail.selectFirst("strong")!!.text())
+        assertEquals("Share a thought, start a conversation, and meet people who care.", rail.selectFirst("p")!!.text())
+    }
 }
