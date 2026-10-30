@@ -77,9 +77,12 @@ enum class PostSize { SMALL, NORMAL, LARGE;
     }
 }
 
-class PostImage(val mediaType: String, bytes: ByteArray) {
-    private val content = bytes.copyOf()
+class PostImage private constructor(private val content: ByteArray, val mediaType: String) {
+    constructor(mediaType: String, bytes: ByteArray) : this(bytes.copyOf(), mediaType)
     val bytes: ByteArray get() = content.copyOf()
+    val byteCount: Int get() = content.size
+    fun readOnlyBytes(): java.nio.ByteBuffer = java.nio.ByteBuffer.wrap(content).asReadOnlyBuffer()
+    fun withMediaType(mediaType: String): PostImage = PostImage(content, mediaType)
 }
 
 class Post(

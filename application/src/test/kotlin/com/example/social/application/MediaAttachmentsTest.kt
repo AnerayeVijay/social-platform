@@ -25,7 +25,7 @@ class MediaAttachmentsTest {
         val size = 8 + body.size
         return b(0, 0, 0, size) + ascii("ftyp") + body + b(0, 0, 0, 8) + ascii("mdat")
     }
-    private fun webm(docType: String) = b(0x1A, 0x45, 0xDF, 0xA3, 0x80 + 4 + docType.length) +
+    private fun webm(docType: String) = b(0x1A, 0x45, 0xDF, 0xA3, 0x80 + 3 + docType.length) +
         b(0x42, 0x82, 0x80 + docType.length) + ascii(docType) + b(0x18, 0x53, 0x80, 0x67)
     private val mp3Frame = b(0xFF, 0xFB, 0x90, 0x64, 0, 0)
     private val adtsFrame = b(0xFF, 0xF1, 0x50, 0x80, 0x02, 0x1F, 0xFC)
@@ -69,7 +69,7 @@ class MediaAttachmentsTest {
             "a.webp" to riff("WAVE", "fmt "), "a.wav" to riff("WEBP", "VP8 "),
             "a.mp3" to adtsFrame, "a.aac" to mp3Frame, "a.mp3" to ascii("ID3") + b(4, 0, 0, 0, 0, 0x7F) + mp3Frame,
             "a.webm" to webm("matroska"), "a.webm" to b(0x1A, 0x45, 0xDF, 0xA3, 0x80),
-            "a.mp4" to ftyp("qt  ", "qt  "), "a.mov" to ftyp("isom", "isom"), "a.m4a" to ftyp("isom", "avc1"),
+            "a.mp4" to ftyp("qt  ", "qt  "), "a.mov" to ftyp("isom", "isom"), "a.m4a" to ftyp("qt  ", "qt  "),
             "a.heic" to ftyp("avif", "mif1", "avif"), "a.avif" to ftyp("heic", "mif1", "heic"),
             "a.mp4" to b(0, 0, 0x10, 0) + ascii("ftypisom") + ByteArray(8),
             "a.png" to b(0x89) + ascii("PNG"), "a.gif" to ascii("GIF90a"), "a.flac" to ascii("<svg"),
@@ -105,5 +105,92 @@ class MediaAttachmentsTest {
         source[0] = 0
         upload.bytes[1] = 0
         assertContentEquals(b(0xFF, 0xD8, 0xFF), upload.bytes)
+    }
+
+    @Test fun `m4a accepts generic iso brands`() {
+        assertEquals("audio/mp4", validate("a.m4a", ftyp("isom", "isom", "mp42")).mediaType)
+        assertEquals("audio/mp4", validate("a.M4A", ftyp("mp42", "mp41")).mediaType)
+    }
+
+    @Test fun `still images carrying generic iso brands are not accepted as mp4 or m4a`() {
+        val heic = ftyp("heic", "mif1", "heic", "isom")
+        val avif = ftyp("avif", "mif1", "avif", "miaf", "iso8", "mp42")
+        listOf("a.mp4", "a.m4v", "a.m4a").forEach { name ->
+            assertFailsWith<IllegalArgumentException>(name) { validate(name, heic) }
+            assertFailsWith<IllegalArgumentException>(name) { validate(name, avif) }
+        }
+        assertEquals("image/heic", validate("a.heic", heic).mediaType)
+        assertEquals("image/avif", validate("a.avif", avif).mediaType)
+    }
+
+    private fun atom(type: String, payload: Int = 0, declared: Int = 8 + payload) =
+        b(declared ushr 24, (declared ushr 16) and 0xFF, (declared ushr 8) and 0xFF, declared and 0xFF) + ascii(type) + ByteArray(payload)
+
+    @Test fun `legacy quicktime without ftyp is recognised by a sane top-level atom chain`() {
+        listOf(atom("moov", 4), atom("wide") + atom("mdat", 16) + atom("moov", 8), atom("free", 2) + atom("mdat"))
+            .forEach { assertEquals("video/quicktime", validate("a.MOV", it).mediaType) }
+    }
+
+    @Test fun `legacy quicktime atoms with unsafe bounds or no movie data are rejected`() {
+        listOf(
+            atom("moov", 4, declared = 100), atom("wide", declared = 4) + atom("moov"), atom("moov", declared = 0),
+            atom("wide") + atom("free"), atom("free", 2), atom("skip") + atom("moov"), atom("mdat").copyOf(6),
+            ascii("<html>moov"), atom("wide") + ascii("<html><script>"),
+        ).forEachIndexed { i, bytes -> assertFailsWith<IllegalArgumentException>("case $i") { validate("a.mov", bytes) } }
+    }
+
+    private fun ebml(vararg children: ByteArray, declared: Int? = null): ByteArray {
+        val body = children.fold(ByteArray(0)) { acc, c -> acc + c }
+        val size = declared ?: body.size
+        return b(0x1A, 0x45, 0xDF, 0xA3, 0x40 or (size ushr 8), size and 0xFF) + body + b(0x18, 0x53, 0x80, 0x67)
+    }
+    private fun element(id: ByteArray, payload: ByteArray) =
+        id + b(0x40 or (payload.size ushr 8), payload.size and 0xFF) + payload
+    private val void = b(0xEC)
+    private val docType = b(0x42, 0x82)
+
+    @Test fun `webm doc type is found anywhere inside the bounded ebml header`() {
+        val bytes = ebml(element(b(0x42, 0x86), b(1)), element(void, ByteArray(200)), element(docType, ascii("webm")))
+        assertEquals("video/webm", validate("a.webm", bytes).mediaType)
+    }
+
+    @Test fun `webm header that only hides or overstates a webm doc type is rejected`() {
+        val webmType = element(docType, ascii("webm"))
+        listOf(
+            ebml(element(docType, ascii("matroska")), element(void, ascii("webm") + b(0x42, 0x82, 0x84) + ascii("webm"))),
+            ebml(element(void, b(0x42, 0x82, 0x84) + ascii("webm"))),
+            ebml(webmType, declared = webmType.size + 20),
+            ebml(webmType, element(void, ByteArray(5000))),
+            ebml(webmType, webmType),
+            ebml(element(docType, ascii("webmx"))),
+            ebml(element(docType, ascii("web"))),
+            ebml(docType + b(0xFF) + ascii("webm") + ByteArray(123)),
+            ebml(b(0x08, 1, 2, 3, 4, 0x80) + webmType),
+            b(0x1A, 0x45, 0xDF, 0xA3, 0x40, webmType.size + 8) + webmType + b(0x42, 0x86, 0x40),
+            ebml(docType + b(0x40, 0x10) + ascii("webm")),
+            ebml(b(0) + webmType),
+        ).forEachIndexed { i, bytes -> assertFailsWith<IllegalArgumentException>("case $i") { validate("a.webm", bytes) } }
+        assertEquals("video/webm", validate("a.webm", ebml(element(docType, ascii("webm") + b(0)))).mediaType)
+    }
+
+    @Test fun `max bytes follows the filename extension and rejects unsupported names`() {
+        assertEquals(AttachmentPolicy.MAX_IMAGE_BYTES, AttachmentPolicy.maxBytes("a.HEIC"))
+        assertEquals(AttachmentPolicy.MAX_VIDEO_BYTES, AttachmentPolicy.maxBytes("clip.mov"))
+        assertEquals(AttachmentPolicy.MAX_AUDIO_BYTES, AttachmentPolicy.maxBytes("song.m4a"))
+        listOf("a.svg", "jpg", "a.jpg.html", "").forEach { assertFailsWith<IllegalArgumentException>(it) { AttachmentPolicy.maxBytes(it) } }
+    }
+
+    @Test fun `validated original cannot be changed through the input array or any returned array`() {
+        val source = b(0xFF, 0xD8, 0xFF, 0xE0, 7)
+        val upload = AttachmentUpload("a.jpg", source)
+        assertEquals(5, upload.size)
+        val media = AttachmentPolicy.validate(upload)
+        source.fill(0)
+        upload.bytes.fill(0)
+        media.bytes.fill(0)
+        assertContentEquals(b(0xFF, 0xD8, 0xFF, 0xE0, 7), media.bytes)
+        assertContentEquals(b(0xFF, 0xD8, 0xFF, 0xE0, 7), upload.bytes)
+        assertEquals(5, media.byteCount)
+        assertTrue(media.readOnlyBytes().isReadOnly)
     }
 }
