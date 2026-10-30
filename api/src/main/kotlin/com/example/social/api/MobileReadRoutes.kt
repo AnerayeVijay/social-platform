@@ -31,7 +31,8 @@ fun mobileReadRoutes(queries: PostQueries, accounts: Accounts, access: AccessCon
                 "id" to post.id.value.toString(), "authorId" to post.authorId.value.toString(), "body" to post.body,
                 "createdAt" to post.createdAt.toString(), "hashtags" to post.hashtags.map { it.value }.sorted(),
                 "likeCount" to post.likeCount, "commentCount" to post.commentCount, "likedByViewer" to post.likedByViewer, "visibility" to post.visibility.name.lowercase(),
-                "font" to post.font.name.lowercase(), "size" to post.size.name.lowercase()
+                "font" to post.font.name.lowercase(), "size" to post.size.name.lowercase(),
+                "attachments" to attachmentDescriptors("/api/posts/${post.id.value}/attachments", post.mediaTypes)
             ) }, "next" to page.next?.let(::encodePostCursor)))
         }
     },
@@ -46,7 +47,8 @@ fun mobileReadRoutes(queries: PostQueries, accounts: Accounts, access: AccessCon
             if (queries.post(id, access?.session(request)?.accountId) == null) return@apiSafely apiJson(mapOf("error" to "Post not found"), Status.NOT_FOUND)
             val page = queries.visibleComments(id, limit, after, access?.session(request)?.accountId)
             apiJson(mapOf("comments" to page.comments.map { mapOf("id" to it.id.value.toString(), "authorId" to it.authorId.value.toString(),
-                "body" to it.body, "createdAt" to it.createdAt.toString()) }, "next" to page.next?.let { "${it.createdAt}|${it.id.value}" }))
+                "body" to it.body, "createdAt" to it.createdAt.toString(),
+                "attachments" to commentAttachmentDescriptors("/api/posts/${id.value}/comments", it.id, it.attachmentType)) }, "next" to page.next?.let { "${it.createdAt}|${it.id.value}" }))
         }
     },
     "/api/profiles/{id}" bind Method.GET to { request ->
