@@ -8,7 +8,7 @@ private val darkPalette = """
 
 /** Supplemental tokens leave the existing responsive layout intact. */
 internal val appearanceStyles = """
-    :root{--page-bg:#f3f6f5;--ink:#202e2b;--field:#fafcfb;--button-ink:#fff;--page-overlay:rgba(243,246,245,.35);--header-overlay:rgba(255,255,255,.8);background:var(--page-bg);color:var(--ink)}
+    :root{--page-bg:#f4f6fc;--ink:#16215a;--field:#fbfcff;--button-ink:#fff;--page-overlay:rgba(243,246,245,.35);--header-overlay:rgba(255,255,255,.8);background:var(--page-bg);color:var(--ink)}
     :root[data-theme=dark]{$darkPalette}
     @media(prefers-color-scheme:dark){:root[data-theme=system]{$darkPalette}}
     body{min-height:100vh;color:var(--ink)}
