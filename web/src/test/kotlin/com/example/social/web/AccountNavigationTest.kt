@@ -8,6 +8,17 @@ import java.util.UUID
 import kotlin.test.*
 
 class AccountNavigationTest {
+    @Test fun `bottom bar links signed in members to their profile instead of sign in`() {
+        val f = CustomizationFixture()
+        val signedIn = Jsoup.parse(f.get("/").bodyString())
+        val profile = assertNotNull(signedIn.selectFirst(".mobile-nav a.mobile-account"))
+        assertEquals("/profiles/${f.owner.id.value}", profile.attr("href"))
+        assertEquals("My profile", profile.selectFirst("span:last-child")!!.text())
+        val anonymous = Jsoup.parse(f.app(Request(Method.GET, "/")).bodyString())
+        assertEquals("/login", anonymous.selectFirst(".mobile-nav a.mobile-account")!!.attr("href"))
+        assertEquals("Sign in", anonymous.selectFirst(".mobile-nav a.mobile-account")!!.selectFirst("span:last-child")!!.text())
+    }
+
     @Test fun `sidebar shows the signed in members photo and falls back to their initials when removed`() {
         val f = CustomizationFixture()
         f.accounts.update(f.owner.copy(displayName = "Alex Reader"))

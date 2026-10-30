@@ -245,6 +245,7 @@ internal fun withAccountHeader(html: String, session: Session): String {
     val signOut = "<form class=\"sidebar-signout\" action=\"/logout\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button type=\"submit\">Sign out</button></form>"
     return html.replaceFirst("</div></header>", "<nav class=\"account-controls\"></nav></div></header>")
         .replaceFirst("<nav class=\"account-navigation\" aria-label=\"Main navigation\">", "<nav class=\"account-navigation\" aria-label=\"Main navigation\">$navigation")
+        .replaceFirst("<a href=\"/login\" class=\"mobile-account\"><span class=\"nav-icon\" aria-hidden=\"true\">♙</span><span>Sign in</span></a>", "<a href=\"/profiles/${session.accountId.value}\" class=\"mobile-account\"><span class=\"nav-icon\" aria-hidden=\"true\">♙</span><span>My profile</span></a>")
         .replaceFirst("</aside>", "$signOut</aside>")
 }
 
