@@ -187,23 +187,68 @@ themselves.
   CSRF token. History and polling responses are user-specific and `no-store`. `/notifications/recent` is a
   web-session endpoint for the page script, not part of the mobile API.
 
-### Post fonts and images
+### Post fonts and media attachments
 
 In **Create post** choose a whole-post **Font** (sans-serif, serif, monospace) and **Text size**
 (small, normal, large); the editor previews them and readers see them in the feed, profiles and
-conversation. New posts can also include up to 4 JPEG or PNG images of 5 MB each (same 4096 pixel /
-16 megapixel caps as profile images). Selected images show previews with a **Remove image** button
-before publishing; images are shown in a gallery below the post text on the feed, profiles and
-conversation. A post may be image-only, but needs text or at least one image. Posts cannot be edited
-and existing posts are unchanged (sans-serif, normal size, no images).
+conversation. Posts can include up to **4 attachments**, and comments and replies can each include
+**1 attachment**. Text is optional when an attachment is present; a submission with neither text nor
+media is rejected. Likes/reactions are unchanged. Profile photos and backgrounds retain the separate
+JPEG/PNG processing rules above.
 
-Images are re-encoded as JPEGs within 1920 × 1920 without metadata and stored in PostgreSQL. They
-follow the post's audience: `/media/posts/{id}/{position}` is readable only by viewers who may read the
-post. Image publishing requires JavaScript (it uses a multipart upload with the `X-CSRF-Token` header);
-without JavaScript the normal form still publishes text posts with font and size. The upload must
-finish within 60 seconds, otherwise it is rejected (408) and the composer keeps your text, images and
-style so you can retry. Uploads over the limits (413), busy image processing (429) and expired
-sessions (403) show a message in the composer.
+| Media | Accepted file extensions | Maximum per file |
+|---|---|---|
+| Images and animations | JPEG, JPG, PNG, WebP, GIF, HEIC, AVIF, APNG | 20 MB |
+| Video | MP4, WebM, MOV, M4V | 100 MB |
+| Audio | MP3, AAC, M4A, WAV, OGG, FLAC | 25 MB |
+
+Attachments are stored as **original files** in PostgreSQL: there is no transcoding, background
+conversion worker, or audio/video duration cap. FFmpeg and ImageMagick are not required. Original
+GIF, animated WebP and APNG files retain their animation, and images retain transparency. **Embedded
+metadata is also retained**, including any camera/location metadata; remove sensitive metadata before
+uploading. File extensions and signatures are checked, but this is not a full decoder or malware scan.
+
+Images use the browser's image display, and audio/video use native playback controls without autoplay.
+Inline display/playback depends on the viewer's browser and the codecs inside the file; accepting a
+format does not guarantee playback. A download link is available for every attachment, including
+formats the browser cannot display. Media responses support single HTTP byte ranges for seeking.
+Attachments and downloads follow the post's audience, including media on comments and replies.
+Uploads are buffered and serialized per server instance; allow heap headroom for four maximum-sized
+videos plus request/JDBC buffers. Original files also increase database and backup storage usage.
+
+The website shows attachment previews and removal controls before publishing. Media publishing
+requires JavaScript and sends a multipart upload with the `X-CSRF-Token` header; without JavaScript,
+normal text forms still work. Upload reads have a 60-second deadline, with the server's socket timeout
+bounding blocked reads. Oversized files (413), timed-out uploads (408), busy uploads (429) and expired
+sessions (403) show an error so the composer can be retried. The JSON API also supports multipart
+attachments while preserving existing text-only JSON requests. Existing post images remain readable.
+
+#### API attachment uploads
+
+Use the authenticated actor's bearer token and `multipart/form-data` with file parts named
+`attachments` (repeat that field for multiple post attachments):
+
+| Action | Endpoint | Text/style fields |
+|---|---|---|
+| Publish a post | `POST /posts` | `body`, `visibility`, `font`, `size` |
+| Add a comment | `POST /posts/{id}/comments` | `body` |
+| Reply to a comment | `POST /api/posts/{id}/comments/{comment}/replies` | `body` |
+
+For example, with a bearer token from the existing login API:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  -F 'body=Listen to this' \
+  -F 'visibility=members' \
+  -F 'attachments=@/path/to/recording.m4a' \
+  http://localhost:8080/posts
+```
+
+Responses and feed/comment listings include an `attachments` array containing `mediaType`, `url`,
+and `downloadUrl`. Fetch the returned URL with the same authentication when required by the post's
+audience. `downloadUrl` forces a download with a generated safe filename; uploaded filenames are not
+used in response headers. Existing text-only JSON requests keep working. Cookie-authenticated writes
+also require the existing CSRF token.
 
 ### Personal news and article feeds
 

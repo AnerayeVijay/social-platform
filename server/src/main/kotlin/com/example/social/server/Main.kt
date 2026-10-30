@@ -19,7 +19,7 @@ import org.http4k.server.asServer
 fun main() {
     val dataSource = PostgresPostRepository.dataSource()
     Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate()
-    // One gate for every upload path: only one untrusted image is buffered and decoded at a time process-wide.
+    // Profile/background and legacy image uploads share a decoder gate; original media uses withMediaUpload.
     val imageGate = ImageProcessingGate()
     val rasterImages = RasterMemberImages()
     val service = PostService(PostgresPostRepository(dataSource), rasterImages, imageGate)
