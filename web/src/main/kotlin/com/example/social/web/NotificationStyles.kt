@@ -20,5 +20,10 @@ internal val notificationStyles = """
     .notification-panel a{color:var(--teal)}
     .notification.unread{border-left:4px solid var(--teal)}.notification.read{opacity:.8}
     .notification button{text-align:left;white-space:normal;overflow-wrap:anywhere}
+    .notification.card{border-radius:0;border-width:0 0 1px;box-shadow:none;margin:0;padding:0}
+    .notification.card button.button{width:100%;justify-content:flex-start;min-height:0;background:transparent;color:var(--ink);border:0;border-radius:0;box-shadow:none;padding:1rem 1.25rem;font-weight:400}
+    .notification.card button.button:hover{background:var(--soft);color:var(--ink)}
+    .notification.card.unread{border-left-width:4px}.notification.card.unread button.button{font-weight:650}
+    .notification.card time{display:block;padding:0 1.25rem 1rem;font-size:.75rem;color:var(--muted)}
     @media(max-width:700px){.notification-bell{position:static}.notification-panel{left:.75rem;right:.75rem;width:auto;top:100%}}
 """.trimIndent()
