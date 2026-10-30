@@ -32,7 +32,7 @@ class MediaBrowserTest {
         page.locator(".create-post > summary").click()
         page.locator("#body").fill("Hello")
         page.locator("#new-post-audience").selectOption("public")
-        page.getByText("Publish post", Page.GetByTextOptions().setExact(true)).click()
+        page.getByText("Post", Page.GetByTextOptions().setExact(true)).click()
         page.waitForSelector("#comment")
         page.locator("#comment-media").setInputFiles(video)
         assertEquals(false, page.locator("#comment").evaluate("el => el.required"))

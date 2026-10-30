@@ -137,13 +137,14 @@ class WebRoutesTest {
         assertEquals(1, composer.select("select").size)
         assertEquals("visibility", composer.selectFirst("select")!!.attr("name"))
         assertEquals(1, composer.select(".audience-help").size)
-        assertEquals("Share your thoughts ...", composer.selectFirst("textarea[name=body]")!!.attr("placeholder"))
-        val tools = composer.selectFirst(".composer-tools")!!
+        assertEquals("What's on your mind?", composer.selectFirst(".composer-head strong")!!.text())
+        assertEquals("What's happening? Share your thoughts, ideas or something interesting...", composer.selectFirst("textarea[name=body]")!!.attr("placeholder"))
         assertEquals(0, composer.select("input[type=file]").size)
-        assertNull(tools.selectFirst("[data-attach]"))
-        assertTrue(tools.select("button[disabled]").size >= 6)
-        assertEquals("button", tools.selectFirst(".composer-close")!!.attr("type"))
-        assertEquals("Publish post", tools.selectFirst("button[type=submit]")!!.text())
+        val tools = composer.selectFirst(".composer-tools")!!
+        assertEquals(listOf("Photo", "Video", "Emoji", "Hashtags", "Poll"), tools.select("button.tool").map { it.text() })
+        assertEquals(listOf("Hashtags"), tools.select("button.tool:not([disabled])").map { it.text() })
+        assertEquals("button", composer.selectFirst(".composer-close")!!.attr("type"))
+        assertEquals("Post", tools.selectFirst("button[type=submit]")!!.text())
     }
 
     @Test fun `signed in web composer publishes as current user`() {

@@ -86,7 +86,7 @@ class WebBrowserTest {
                         assertFalse(page.locator("#body").isVisible)
                         page.locator(".create-post > summary").click()
                         page.locator("#body").fill("My first #kotlin post")
-                        page.getByText("Publish post", Page.GetByTextOptions().setExact(true)).click()
+                        page.getByText("Post", Page.GetByTextOptions().setExact(true)).click()
                         page.locator("#comment").fill("My first comment")
                         page.getByText("Post comment", Page.GetByTextOptions().setExact(true)).click()
                         assertTrue(page.getByText("My first comment", Page.GetByTextOptions().setExact(true)).isVisible)

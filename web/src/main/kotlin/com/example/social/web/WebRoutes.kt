@@ -239,7 +239,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
             val content = buildString {
                 val tagFilter = tag?.let { "&amp;tag=${encode(it.value)}" }.orEmpty()
                 append("<h1>Home</h1><p>Your latest updates</p>")
-                if (session != null) append(composer(session))
+                if (session != null) append(composer(session, accounts))
                 append(feedTabs(scope, session != null, tagFilter))
                 if (session != null && follows != null) append(followNavigation(follows, session))
                 if (session == null) append("<section class=\"card\"><strong>Join the conversation</strong><p><a class=\"button\" href=\"/login\">Sign in</a> <a href=\"/register\">Create an account</a></p></section>")
@@ -317,37 +317,43 @@ private fun audienceSelector(id: String, selected: PostVisibility): String =
         "<option value=\"${it.name.lowercase()}\"${if (it == selected) " selected" else ""}>${audienceLabel(it)}</option>"
     } + "</select><p class=\"audience-help\">Members only posts are visible to your approved followers. Private posts are visible only to you.</p>"
 
-private fun composer(session: Session): String =
-    "<details class=\"create-post\"><summary class=\"post-prompt\">Share your thoughts ...</summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"Share your thoughts ...\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${composerTools()}</form></section></details>"
+private fun composer(session: Session, accounts: Accounts?): String =
+    "<details class=\"create-post\"><summary class=\"post-prompt\">Share your thoughts ...</summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">${composerHead(session, accounts)}<label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What's happening? Share your thoughts, ideas or something interesting...\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${composerTools()}</form></section></details>"
+
+private fun composerHead(session: Session, accounts: Accounts?): String {
+    val name = accounts?.byId(session.accountId)?.displayName ?: "Member"
+    val close = composerIcon("""<path d="M6 6l12 12M18 6L6 18"/>""")
+    return "<div class=\"composer-head\"><span class=\"avatar\" aria-hidden=\"true\" translate=\"no\">${escapeHtml(memberInitials(name))}</span><div><strong>What's on your mind?</strong><p>Share it with the TALLO community</p></div>" +
+        "<button type=\"button\" class=\"composer-close\" aria-label=\"Close\" onclick=\"this.closest('details').open=false\">$close</button></div>"
+}
 
 private fun composerIcon(body: String) = "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\">$body</svg>"
 
 private fun composerTools(): String {
-    val disabled = listOf(
-        "Add emoji" to composerIcon("""<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4 4 0 0 0 7 0"/><circle cx="9" cy="10" r=".6"/><circle cx="15" cy="10" r=".6"/>"""),
-        "Add event" to composerIcon("""<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/>"""),
-        "Add job" to composerIcon("""<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 13h18"/>"""),
-        "Add poll" to composerIcon("""<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-5M12 17V8M16 17v-3"/>"""),
-        "Add document" to composerIcon("""<path d="M6 3h8l4 4v14H6z"/><path d="M9 11h6M9 15h6"/>""")
-    ).joinToString("") { (label, icon) -> "<button type=\"button\" class=\"tool-icon\" disabled aria-label=\"$label\" title=\"Coming soon\">$icon</button>" }
-    val close = composerIcon("""<path d="M6 6l12 12M18 6L6 18"/>""")
-    return "<div class=\"composer-tools\"><button type=\"button\" class=\"tool-pill\" disabled title=\"Coming soon\">Proofread</button>" +
-        disabled +
-        "<button type=\"button\" class=\"composer-close\" aria-label=\"Close\" onclick=\"this.closest('details').open=false\">$close</button>" +
-        "<button class=\"publish\" type=\"submit\">Publish post</button></div>"
+    val tools = listOf(
+        composerTool("Photo", composerIcon("""<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 9"/>""")),
+        composerTool("Video", composerIcon("""<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>""")),
+        composerTool("Emoji", composerIcon("""<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4 4 0 0 0 7 0"/><circle cx="9" cy="10" r=".6"/><circle cx="15" cy="10" r=".6"/>""")),
+        composerTool("Hashtags", composerIcon("""<path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/>"""), enabled = true, attributes = " data-insert=\"#\""),
+        composerTool("Poll", composerIcon("""<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-5M12 17V8M16 17v-3"/>"""))
+    ).joinToString("")
+    return "<div class=\"composer-tools\">$tools<button class=\"publish\" type=\"submit\">Post</button></div>" +
+        "<script>document.querySelectorAll('[data-insert]').forEach(function(b){b.addEventListener('click',function(){var t=document.getElementById('body');t.focus();t.setRangeText(b.dataset.insert,t.selectionStart,t.selectionEnd,'end')})})</script>"
 }
+
+private fun composerTool(label: String, icon: String, enabled: Boolean = false, attributes: String = ""): String =
+    "<button type=\"button\" class=\"tool\"$attributes${if (enabled) "" else " disabled title=\"Coming soon\""}>$icon<span>$label</span></button>"
 
 private const val composerStyles = """
 .create-post{margin:1rem 0}.create-post>summary{list-style:none;cursor:pointer}.create-post>summary::-webkit-details-marker{display:none}
 .post-prompt{display:block;padding:.9rem 1rem;border:1px solid var(--line);border-radius:12px;color:var(--muted);font-size:1rem;background:transparent}
+.composer-head{display:flex;align-items:center;gap:.7rem;margin-bottom:.8rem}.composer-head p{margin:0;color:var(--muted);font-size:.8rem}.composer-head strong{display:block;font-size:1rem}.composer-head .composer-close{margin-left:auto}
 .composer-tools{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem;margin-top:.6rem;padding-top:.6rem;border-top:1px solid var(--line)}
-.tool-icon,.composer-close{width:38px;min-height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;color:var(--ink);border:0;border-radius:50%}
-.tool-icon svg,.composer-close svg{width:20px;height:20px}
-.tool-icon:hover:not(:disabled),.composer-close:hover{background:var(--soft)}
-.tool-icon:disabled{opacity:.45;cursor:not-allowed}
-.tool-pill{min-height:34px;padding:.3rem .9rem;background:transparent;color:var(--ink);border:1px solid var(--ink);border-radius:999px;font-weight:600}
-.tool-pill:disabled{opacity:.6;cursor:not-allowed}
-.composer-tools .publish{margin-left:auto}
+.composer-close{width:38px;min-height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;color:var(--ink);border:0;border-radius:50%}
+.composer-close svg{width:20px;height:20px}.composer-close:hover{background:var(--soft)}
+.tool{display:inline-flex;align-items:center;gap:.35rem;min-height:36px;padding:.3rem .5rem;background:transparent;color:var(--ink);border:0;border-radius:8px;font-size:.85rem;font-weight:500}
+.tool svg{width:18px;height:18px}.tool:hover:not(:disabled){background:var(--soft)}.tool:disabled{opacity:.5;cursor:not-allowed}
+.composer-tools .publish{margin-left:auto;min-height:40px;padding:.5rem 1.4rem;background:#0f0f0f;color:#fff;border:0;border-radius:999px;font-weight:700}
 """
 
 internal fun withAccountHeader(html: String, session: Session, path: String): String {
