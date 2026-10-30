@@ -1,7 +1,10 @@
 package com.example.social.http
 
+import com.example.social.application.MediaContent
 import com.example.social.domain.PostImage
 import org.http4k.core.*
+import java.io.ByteArrayInputStream
+import java.io.FilterInputStream
 import kotlin.test.*
 
 class MediaResponsesTest {
@@ -71,4 +74,79 @@ class MediaResponsesTest {
     @Test fun `avif is served inline`() = assertInline("image/avif", "avif")
     @Test fun `aac is served inline`() = assertInline("audio/aac", "aac")
     @Test fun `flac is served inline`() = assertInline("audio/flac", "flac")
+
+    private class FakeSource(val length: Long) {
+        val opened = mutableListOf<Pair<Long, Long>>()
+        var closed = 0
+        val content = MediaContent("video/mp4", length) { offset, len ->
+            opened += offset to len
+            object : FilterInputStream(ByteArrayInputStream(ByteArray(len.toInt()) { 7 })) { override fun close() { closed++; super.close() } }
+        }
+    }
+    private val hundredMb = 100L * 1024 * 1024
+
+    @Test fun `stream missing media is 404`() = assertEquals(Status.NOT_FOUND, streamOriginalMediaResponse(get(), null).status)
+
+    @Test fun `one byte range of a 100MB source opens only that byte and only when the body is read`() {
+        val source = FakeSource(hundredMb)
+        val r = streamOriginalMediaResponse(get(range = "bytes=${hundredMb - 1}-"), source.content)
+        assertEquals(Status.PARTIAL_CONTENT, r.status)
+        assertEquals("bytes ${hundredMb - 1}-${hundredMb - 1}/$hundredMb", r.header("Content-Range"))
+        assertEquals("1", r.header("Content-Length"))
+        assertEquals(1L, r.body.length)
+        assertTrue(source.opened.isEmpty(), "opened before body consumed")
+        r.body.stream.use { assertContentEquals(byteArrayOf(7), it.readBytes()) }
+        assertEquals(listOf(hundredMb - 1 to 1L), source.opened)
+        assertEquals(1, source.closed)
+    }
+
+    @Test fun `full response streams the whole interval lazily`() {
+        val source = FakeSource(10)
+        val r = streamOriginalMediaResponse(get(), source.content)
+        assertEquals(Status.OK, r.status)
+        assertEquals("10", r.header("Content-Length"))
+        assertTrue(source.opened.isEmpty())
+        assertEquals(10, r.body.stream.use { it.readBytes().size })
+        assertEquals(listOf(0L to 10L), source.opened)
+    }
+
+    @Test fun `closing an unread body never opens the source`() {
+        val source = FakeSource(10)
+        streamOriginalMediaResponse(get(range = "bytes=0-1"), source.content).close()
+        assertTrue(source.opened.isEmpty())
+        assertEquals(0, source.closed)
+    }
+
+    @Test fun `unsatisfiable range never opens the source`() {
+        val source = FakeSource(10)
+        val r = streamOriginalMediaResponse(get(range = "bytes=10-"), source.content)
+        assertEquals(Status.REQUESTED_RANGE_NOT_SATISFIABLE, r.status)
+        assertEquals("bytes */10", r.header("Content-Range"))
+        r.body.stream.use { it.readBytes() }
+        assertTrue(source.opened.isEmpty())
+    }
+
+    @Test fun `ranges beyond 2GiB use long offsets`() {
+        val big = 5L * 1024 * 1024 * 1024
+        val source = FakeSource(big)
+        val r = streamOriginalMediaResponse(get(range = "bytes=${big - 2}-${big + 100}"), source.content)
+        assertEquals("bytes ${big - 2}-${big - 1}/$big", r.header("Content-Range"))
+        r.body.stream.use { it.readBytes() }
+        assertEquals(listOf(big - 2 to 2L), source.opened)
+    }
+
+    @Test fun `zero length media is an empty 200 without opening and any range is 416`() {
+        val source = FakeSource(0)
+        val r = streamOriginalMediaResponse(get(), source.content)
+        assertEquals(Status.OK, r.status)
+        assertEquals("0", r.header("Content-Length"))
+        assertEquals(0, r.body.stream.use { it.readBytes().size })
+        assertTrue(source.opened.isEmpty())
+        assertEquals(Status.REQUESTED_RANGE_NOT_SATISFIABLE, streamOriginalMediaResponse(get(range = "bytes=0-"), source.content).status)
+    }
+
+    @Test fun `overlong range numbers are rejected without parsing them`() {
+        val r = streamOriginalMediaResponse(get(range = "bytes=" + "9".repeat(10_000) + "-"), FakeSource(10).content)
+        assertEquals(Status.REQUESTED_RANGE_NOT_SATISFIABLE, r.status)
+    }
 }
