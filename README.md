@@ -118,6 +118,34 @@ Keep this terminal open. Open **http://localhost:8080** in your browser. On star
 4. Publish posts, like/unlike, comment, search hashtags, and edit your display name from **My profile**.
 5. Open another member's profile from a post and choose **Request to follow**. The member can accept or reject it under **Follow requests**.
 
+### Hashtags and personalised feeds
+
+Hashtags in post text (for example `#Kotlin`) are case-insensitive and link to a hashtag page at
+`/hashtags/NAME`. Signed-in members can **follow** hashtags from that page with a **Follow** or
+**Unfollow** button. Following is personal and needs no approval.
+
+- **Hashtags you follow** (`/following/hashtags`) lists your followed tags and shows their posts,
+  newest first, with **Older posts** paging. Posts only appear here if their audience allows you to
+  see them. Without follows, the page explains this and links to **Explore**.
+- **Explore** links to **Hashtags you follow** for signed-in members and still shows trending
+  hashtags over the last 24 hours or 7 days, plus the latest posts.
+- **Find a hashtag** in the sidebar searches hashtags by name. Following a hashtag never creates notifications.
+
+Hashtag endpoints (bearer token or session; writes need CSRF for cookie sessions):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/hashtags/NAME/follow` | Follow a hashtag, returns `204` (repeating is harmless) |
+| `DELETE` | `/api/hashtags/NAME/follow` | Unfollow a hashtag, returns `204` (repeating is harmless) |
+| `GET` | `/api/hashtags/followed` | Your followed hashtags, `{"hashtags":["kotlin",...]}` |
+| `GET` | `/api/feed/hashtags?limit=20&before=CURSOR` | Newest posts with any followed hashtag; pass `next` back as `before` |
+| `GET` | `/api/hashtags/NAME/posts` | Posts for one hashtag (public or visible to the viewer) |
+| `GET` | `/api/hashtags/trending?period=24h` | Trending hashtags; `period` is `24h` or `7d` |
+| `POST` | `/api/hashtags/search` | Search by name with `{"query":"kot","limit":10,"offset":0}` |
+
+`NAME` may include a leading `#`; it is lowercased before matching. Names are 1–50 letters, digits, or
+underscores. Invalid names return `400`. Signed-out requests to follow or list hashtags return `401`.
+
 ### Following members
 
 The home feed has **All posts** and **Following** tabs. Following requires sign-in and shows
@@ -595,7 +623,7 @@ Start both frontends with `./gradlew :server:run`; `:web` and `:api` are library
 
 ## Persistence model
 
-`posts`, `hashtags`, `post_hashtags`, `post_likes`, `comments`, `accounts`, `account_tokens`, `sessions`, `google_identities`, `oauth_attempts`, and `member_follows`. Composite primary keys make hashtag links, likes, and directed follow relationships unique. Follow relationships have pending/accepted states, prohibit self-following, and cascade with account deletion. Reactions and comments use targeted writes. Web feeds load summaries and counts; comment lists have separate cursors. Compatibility endpoints can still load full aggregates.
+`posts`, `hashtags`, `post_hashtags`, `post_likes`, `comments`, `accounts`, `account_tokens`, `sessions`, `google_identities`, `oauth_attempts`, `member_follows`, and `hashtag_follows`. Composite primary keys make hashtag links, likes, directed follow relationships, and hashtag follows unique. Follow relationships have pending/accepted states, prohibit self-following, and cascade with account deletion. Hashtag follows cascade with account deletion and do not require the hashtag to exist yet. Reactions and comments use targeted writes. Web feeds load summaries and counts; comment lists have separate cursors. Compatibility endpoints can still load full aggregates.
 
 ## Tests
 
