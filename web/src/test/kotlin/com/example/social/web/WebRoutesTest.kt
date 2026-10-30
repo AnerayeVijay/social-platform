@@ -10,7 +10,7 @@ import java.time.Instant
 import kotlin.test.*
 
 class WebRoutesTest {
-    @Test fun `feed omits the intro banner and retains tabs and posts while the composer lives in the left navigation`() {
+    @Test fun `feed omits the intro banner and retains tabs and posts while the composer lives in the main column`() {
         val fixture = CustomizationFixture()
         for (path in listOf("/", "/?scope=mine")) {
             val response = fixture.get(path)
@@ -19,8 +19,8 @@ class WebRoutesTest {
             val main = document.selectFirst("main")!!
             assertTrue(main.select("section.intro").isEmpty(), path)
             assertEquals(1, main.select(".feed-tabs").size)
-            assertEquals(0, main.select(".create-post").size)
-            assertEquals(1, document.select("aside .account-navigation .create-post").size)
+            assertEquals(1, main.select(".create-post").size)
+            assertEquals(0, document.select("aside .account-navigation .create-post").size)
             assertEquals("A community post", main.selectFirst(".post-body")!!.text())
         }
     }

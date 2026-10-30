@@ -238,6 +238,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
             val content = buildString {
                 val tagFilter = tag?.let { "&amp;tag=${encode(it.value)}" }.orEmpty()
                 append("<h1>Home</h1><p>Your latest updates</p>")
+                if (session != null) append(composer(session))
                 append(feedTabs(scope, session != null, tagFilter))
                 if (session != null && follows != null) append(followNavigation(follows, session))
                 if (session == null) append("<section class=\"card\"><strong>Join the conversation</strong><p><a class=\"button\" href=\"/login\">Sign in</a> <a href=\"/register\">Create an account</a></p></section>")
@@ -331,7 +332,7 @@ internal fun withAccountHeader(html: String, session: Session, path: String): St
     val navigation = "<span class=\"avatar account-avatar\" aria-hidden=\"true\" translate=\"no\">♙</span>" +
         link("/", "Home") + link("/members", "Find members") + link("/notifications", "Notifications") +
         link("/me/articles", "News &amp; Articles") + link("/profiles/${session.accountId.value}", "My profile", " account-profile") +
-        link("/settings", "Settings") + composer(session)
+        link("/settings", "Settings")
     val signOut = "<form class=\"sidebar-signout\" action=\"/logout\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button type=\"submit\">Sign out</button></form>"
     return html.replaceFirst("</div></header>", "<nav class=\"account-controls\"></nav></div></header>")
         .replaceFirst("<nav class=\"account-navigation\" aria-label=\"Main navigation\">", "<nav class=\"account-navigation\" aria-label=\"Main navigation\">$navigation")

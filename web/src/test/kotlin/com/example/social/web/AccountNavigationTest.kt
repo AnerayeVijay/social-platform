@@ -40,7 +40,7 @@ class AccountNavigationTest {
         val page = Jsoup.parse(f.get("/").bodyString())
         val navigation = assertNotNull(page.selectFirst(".sidebar nav[aria-label='Main navigation']"))
         assertEquals("R", assertNotNull(navigation.selectFirst(".avatar")).text())
-        assertEquals(listOf("span", "a", "a", "a", "a", "a", "a", "details", "script"), navigation.children().map { it.tagName() })
+        assertEquals(listOf("span", "a", "a", "a", "a", "a", "a"), navigation.children().map { it.tagName() })
         assertEquals("/profiles/${f.owner.id.value}", navigation.selectFirst("a.account-profile")!!.attr("href"))
         assertEquals("My profile", navigation.selectFirst("a.account-profile")!!.text())
         val sidebar = assertNotNull(page.selectFirst(".sidebar"))
