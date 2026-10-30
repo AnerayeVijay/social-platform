@@ -15,10 +15,16 @@ interface CommentThreadRepository {
         return append(post, comment)
     }
     fun attachment(post: PostId, id: CommentId, viewer: UserId?): PostImage? = null
+    fun attachmentContent(post: PostId, id: CommentId, viewer: UserId?): MediaContent? = attachment(post, id, viewer)?.let(MediaContent::from)
     fun like(post: PostId, id: CommentId, user: UserId, liked: Boolean): Boolean
 }
 
 class CommentThreads(private val repository: CommentThreadRepository) {
+    fun attachmentContent(post: PostId, id: CommentId, viewer: UserId?): MediaContent? {
+        checkAccess(post, viewer)
+        return repository.attachmentContent(post, id, viewer)
+    }
+
     fun attachment(post: PostId, id: CommentId, viewer: UserId?): PostImage? {
         checkAccess(post, viewer)
         return repository.attachment(post, id, viewer)

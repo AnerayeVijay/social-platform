@@ -22,9 +22,12 @@ interface PostRepository {
         return appendComment(id, comment)
     }
     fun commentAttachment(id: PostId, comment: CommentId, viewer: UserId?): PostImage? = null
+    fun commentAttachmentContent(id: PostId, comment: CommentId, viewer: UserId?): MediaContent? =
+        commentAttachment(id, comment, viewer)?.let(MediaContent::from)
     fun save(post: Post): Post
     fun saveWithImages(post: Post, images: List<PostImage>): Post = throw UnsupportedOperationException()
     fun image(id: PostId, position: Int, viewer: UserId?): PostImage? = null
+    fun imageContent(id: PostId, position: Int, viewer: UserId?): MediaContent? = image(id, position, viewer)?.let(MediaContent::from)
     fun find(id: PostId): Post?
     fun page(limit: Int, before: Instant? = null): List<Post>
     fun findByHashtag(tag: Hashtag, limit: Int): List<Post>
@@ -58,8 +61,10 @@ class PostService(private val posts: PostRepository, private val images: MemberI
     }
 
     fun image(id: PostId, position: Int, viewer: UserId?): PostImage? = posts.image(id, position, viewer)
+    fun imageContent(id: PostId, position: Int, viewer: UserId?): MediaContent? = posts.imageContent(id, position, viewer)
 
     fun commentAttachment(id: PostId, comment: CommentId, viewer: UserId?): PostImage? = posts.commentAttachment(id, comment, viewer)
+    fun commentAttachmentContent(id: PostId, comment: CommentId, viewer: UserId?): MediaContent? = posts.commentAttachmentContent(id, comment, viewer)
 
     fun get(id: PostId, viewer: UserId? = null): Post? = if (posts.readable(id, viewer)) posts.find(id) else null
     fun changeVisibility(id: PostId, owner: UserId, visibility: PostVisibility) {
