@@ -230,7 +230,7 @@ class PostgresPostRepositoryTest {
                 assertNull(sees(follower)); assertEquals(listOf<Byte>(7), sees(owner))
                 assertNull(repository.image(PostId.new(), 0, owner))
                 val rejected = Post.publish(owner, "gif", imageCount = 2)
-                assertFailsWith<java.sql.SQLException> { repository.saveWithImages(rejected, listOf(png, PostImage("image/gif", byteArrayOf(1)))) }
+                assertFailsWith<java.sql.SQLException> { repository.saveWithImages(rejected, listOf(png, PostImage("not a media type", byteArrayOf(1)))) }
                 assertNull(repository.find(rejected.id))
                 assertNull(repository.image(rejected.id, 0, owner))
             }

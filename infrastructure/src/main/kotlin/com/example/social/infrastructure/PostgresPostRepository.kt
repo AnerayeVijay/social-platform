@@ -1,5 +1,6 @@
 package com.example.social.infrastructure
 
+import com.example.social.application.MediaContent
 import com.example.social.application.PostRepository
 import com.example.social.domain.*
 import com.zaxxer.hikari.HikariConfig
@@ -56,20 +57,37 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
         } catch (e: Exception) { c.rollback(); throw e }
     }
 
-    override fun appendComment(id: PostId, comment: Comment): Boolean = dataSource.connection.use { c ->
-        c.autoCommit = false
-        try {
-            val inserted = c.prepareStatement("INSERT INTO comments(id,post_id,author_id,body,created_at) SELECT ?,p.id,?,?,? FROM posts p WHERE p.id=? AND ${postVisibilitySql()}").use {
-                it.setObject(1, comment.id.value); it.setObject(2, comment.authorId.value); it.setString(3, comment.body)
-                it.setTimestamp(4, java.sql.Timestamp.from(comment.createdAt)); it.setObject(5, id.value)
-                it.setObject(6, comment.authorId.value)
-                it.executeUpdate() == 1
-            }
-            if (inserted) NotificationWriter.addPostComment(c, comment.id)
-            c.commit()
-            inserted
-        } catch (e: Exception) { c.rollback(); throw e }
+    override fun appendComment(id: PostId, comment: Comment): Boolean {
+        requireUnattached(comment)
+        return appendCommentWithAttachment(id, comment, null)
     }
+
+    override fun appendCommentWithAttachment(id: PostId, comment: Comment, attachment: PostImage?): Boolean {
+        requireBacks(comment, attachment)
+        return dataSource.connection.use { c ->
+            c.autoCommit = false
+            try {
+                val inserted = c.prepareStatement("INSERT INTO comments(id,post_id,author_id,body,created_at) SELECT ?,p.id,?,?,? FROM posts p WHERE p.id=? AND ${postVisibilitySql()}").use {
+                    it.setObject(1, comment.id.value); it.setObject(2, comment.authorId.value); it.setString(3, comment.body)
+                    it.setTimestamp(4, java.sql.Timestamp.from(comment.createdAt)); it.setObject(5, id.value)
+                    it.setObject(6, comment.authorId.value)
+                    it.executeUpdate() == 1
+                }
+                if (inserted) {
+                    attachment?.let { insertCommentMedia(c, comment.id, it) }
+                    NotificationWriter.addPostComment(c, comment.id)
+                }
+                c.commit()
+                inserted
+            } catch (e: Exception) { c.rollback(); throw e }
+        }
+    }
+
+    override fun commentAttachment(id: PostId, comment: CommentId, viewer: UserId?): PostImage? =
+        dataSource.connection.use { readCommentMedia(it, id, comment, viewer) }
+
+    override fun commentAttachmentContent(id: PostId, comment: CommentId, viewer: UserId?): MediaContent? =
+        commentMediaContent(dataSource, id, comment, viewer)
 
     private fun exists(c: Connection, id: PostId): Boolean = c.prepareStatement("SELECT 1 FROM posts WHERE id=?").use {
         it.setObject(1, id.value); it.executeQuery().use { rows -> rows.next() }
@@ -126,6 +144,11 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
         }
     }
 
+    override fun imageContent(id: PostId, position: Int, viewer: UserId?): MediaContent? =
+        PostgresMediaContent(dataSource, "i", "FROM post_images i JOIN posts p ON p.id=i.post_id WHERE i.post_id=? AND i.position=? AND ${postVisibilitySql()}") { ps, at ->
+            ps.setObject(at, id.value); ps.setInt(at + 1, position); ps.setObject(at + 2, viewer?.value)
+        }.load()
+
     override fun page(limit: Int, before: Instant?): List<Post> = dataSource.connection.use { c ->
         val sql = if (before == null)
             "SELECT id FROM posts ORDER BY created_at DESC, id DESC LIMIT ?"
@@ -170,6 +193,9 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
         val imageCount = c.prepareStatement("SELECT count(*) FROM post_images WHERE post_id = ?").use { ps ->
             ps.setObject(1, id.value); ps.executeQuery().use { rs -> rs.next(); rs.getInt(1) }
         }
+        val mediaTypes = c.prepareStatement("SELECT media_type FROM post_images WHERE post_id = ? ORDER BY position").use { ps ->
+            ps.setObject(1, id.value); ps.executeQuery().use { rs -> buildList { while (rs.next()) add(rs.getString(1)) } }
+        }
         val row = c.prepareStatement(
             "SELECT id, author_id, body, created_at, visibility, font, size FROM posts WHERE id = ?${if (lock) " FOR UPDATE" else ""}"
         ).use { ps ->
@@ -183,7 +209,7 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
                     createdAt = rs.getObject("created_at", java.time.OffsetDateTime::class.java).toInstant(),
                     visibility = PostVisibility.parse(rs.getString("visibility")),
                     font = PostFont.parse(rs.getString("font")), size = PostSize.parse(rs.getString("size")),
-                    imageCount = imageCount
+                    imageCount = imageCount, mediaTypes = mediaTypes
                 )
             }
         } ?: return null
@@ -200,7 +226,7 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
             ps.executeQuery().use { rs -> buildSet { while (rs.next()) add(UserId(rs.getObject(1, UUID::class.java))) } }
         }
         val comments = c.prepareStatement(
-            "SELECT id, author_id, body, created_at, parent_id FROM comments WHERE post_id = ? ORDER BY created_at"
+            "SELECT c.id, c.author_id, c.body, c.created_at, c.parent_id, $ATTACHMENT_TYPE_SQL FROM comments c WHERE c.post_id = ? ORDER BY c.created_at"
         ).use { ps ->
             ps.setObject(1, id.value)
             ps.executeQuery().use { rs ->
@@ -210,7 +236,8 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
                         authorId = UserId(rs.getObject("author_id", UUID::class.java)),
                         body = rs.getString("body"),
                         createdAt = rs.getObject("created_at", java.time.OffsetDateTime::class.java).toInstant(),
-                        parentId = rs.getObject("parent_id", UUID::class.java)?.let(::CommentId)
+                        parentId = rs.getObject("parent_id", UUID::class.java)?.let(::CommentId),
+                        attachmentType = rs.getString("attachment_type")
                     ))
                 }
             }
@@ -231,6 +258,7 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
 
     private fun syncComments(c: Connection, before: Post, after: Post) {
         after.comments.drop(before.comments.size).forEach { comment ->
+            requireUnattached(comment)
             c.prepareStatement("INSERT INTO comments(id, post_id, author_id, body, created_at, parent_id) VALUES (?, ?, ?, ?, ?, ?)").use {
                 it.setObject(1, comment.id.value); it.setObject(2, after.id.value)
                 it.setObject(3, comment.authorId.value); it.setString(4, comment.body)

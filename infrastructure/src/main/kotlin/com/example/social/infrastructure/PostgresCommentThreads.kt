@@ -27,7 +27,7 @@ class PostgresCommentThreads(private val dataSource: DataSource) : CommentThread
 
     private fun select(post: PostId, viewer: UserId?, condition: String, parameters: List<Any>, limit: Int): List<ThreadComment> = dataSource.connection.use { c ->
         c.prepareStatement("""
-            SELECT c.*, (SELECT count(*) FROM comment_likes l WHERE l.comment_id=c.id) AS like_count,
+            SELECT c.*, $ATTACHMENT_TYPE_SQL, (SELECT count(*) FROM comment_likes l WHERE l.comment_id=c.id) AS like_count,
               EXISTS(SELECT 1 FROM comment_likes l WHERE l.comment_id=c.id AND l.user_id=?) AS liked,
               (SELECT count(*) FROM comments r WHERE r.parent_id=c.id) AS reply_count
             FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.post_id=? AND ${postVisibilitySql()} AND $condition ORDER BY c.created_at,c.id LIMIT ?
@@ -40,26 +40,44 @@ class PostgresCommentThreads(private val dataSource: DataSource) : CommentThread
                 while (rows.next()) add(ThreadComment(Comment(
                     CommentId(rows.getObject("id", UUID::class.java)), UserId(rows.getObject("author_id", UUID::class.java)),
                     rows.getString("body"), rows.getObject("created_at", OffsetDateTime::class.java).toInstant(),
-                    rows.getObject("parent_id", UUID::class.java)?.let(::CommentId)
+                    rows.getObject("parent_id", UUID::class.java)?.let(::CommentId),
+                    rows.getString("attachment_type")
                 ), rows.getLong("like_count"), rows.getBoolean("liked"), rows.getLong("reply_count")))
             } }
         }
     }
 
-    override fun append(post: PostId, comment: Comment): Boolean = dataSource.connection.use { c ->
-        c.autoCommit = false
-        try {
-            val inserted = c.prepareStatement("INSERT INTO comments(id,post_id,author_id,body,created_at,parent_id) SELECT ?,c.post_id,?,?,?,c.id FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.post_id=? AND c.id=? AND ${postVisibilitySql()}").use {
-                it.setObject(1, comment.id.value); it.setObject(2, comment.authorId.value); it.setString(3, comment.body)
-                it.setTimestamp(4, Timestamp.from(comment.createdAt)); it.setObject(5, post.value); it.setObject(6, comment.parentId?.value)
-                it.setObject(7, comment.authorId.value)
-                it.executeUpdate() == 1
-            }
-            if (inserted) NotificationWriter.addPostComment(c, comment.id)
-            c.commit()
-            inserted
-        } catch (e: Exception) { c.rollback(); throw e }
+    override fun append(post: PostId, comment: Comment): Boolean {
+        requireUnattached(comment)
+        return appendWithAttachment(post, comment, null)
     }
+
+    override fun appendWithAttachment(post: PostId, comment: Comment, attachment: PostImage?): Boolean {
+        requireBacks(comment, attachment)
+        return dataSource.connection.use { c ->
+            c.autoCommit = false
+            try {
+                val inserted = c.prepareStatement("INSERT INTO comments(id,post_id,author_id,body,created_at,parent_id) SELECT ?,c.post_id,?,?,?,c.id FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.post_id=? AND c.id=? AND ${postVisibilitySql()}").use {
+                    it.setObject(1, comment.id.value); it.setObject(2, comment.authorId.value); it.setString(3, comment.body)
+                    it.setTimestamp(4, Timestamp.from(comment.createdAt)); it.setObject(5, post.value); it.setObject(6, comment.parentId?.value)
+                    it.setObject(7, comment.authorId.value)
+                    it.executeUpdate() == 1
+                }
+                if (inserted) {
+                    attachment?.let { insertCommentMedia(c, comment.id, it) }
+                    NotificationWriter.addPostComment(c, comment.id)
+                }
+                c.commit()
+                inserted
+            } catch (e: Exception) { c.rollback(); throw e }
+        }
+    }
+
+    override fun attachment(post: PostId, id: CommentId, viewer: UserId?): PostImage? =
+        dataSource.connection.use { readCommentMedia(it, post, id, viewer) }
+
+    override fun attachmentContent(post: PostId, id: CommentId, viewer: UserId?): MediaContent? =
+        commentMediaContent(dataSource, post, id, viewer)
 
     override fun like(post: PostId, id: CommentId, user: UserId, liked: Boolean): Boolean = dataSource.connection.use { c ->
         if (liked) c.prepareStatement("INSERT INTO comment_likes(comment_id,user_id) SELECT c.id,? FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.post_id=? AND c.id=? AND ${postVisibilitySql()} ON CONFLICT DO NOTHING").use {

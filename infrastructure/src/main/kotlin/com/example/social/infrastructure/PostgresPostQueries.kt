@@ -13,7 +13,7 @@ class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
         require(limit in 1..100) { "limit must be between 1 and 100" }
         return dataSource.connection.use { connection ->
             val cursor = if (after == null) "" else "AND (c.created_at, c.id) > (?, ?)"
-            connection.prepareStatement("SELECT c.* FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.post_id = ? AND c.parent_id IS NULL AND ${postVisibilitySql()} $cursor ORDER BY c.created_at, c.id LIMIT ?").use { statement ->
+            connection.prepareStatement("SELECT c.*, $ATTACHMENT_TYPE_SQL FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.post_id = ? AND c.parent_id IS NULL AND ${postVisibilitySql()} $cursor ORDER BY c.created_at, c.id LIMIT ?").use { statement ->
                 statement.setObject(1, post.value)
                 statement.setObject(2, viewer?.value)
                 var index = 3
@@ -28,7 +28,8 @@ class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
                             CommentId(rows.getObject("id", UUID::class.java)),
                             UserId(rows.getObject("author_id", UUID::class.java)),
                             rows.getString("body"),
-                            rows.getObject("created_at", OffsetDateTime::class.java).toInstant()
+                            rows.getObject("created_at", OffsetDateTime::class.java).toInstant(),
+                            attachmentType = rows.getString("attachment_type")
                         ))
                     }
                 }
@@ -62,6 +63,7 @@ class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
                   (SELECT count(*) FROM post_likes l WHERE l.post_id = p.id) AS like_count,
                   (SELECT count(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
                   (SELECT count(*) FROM post_images i WHERE i.post_id = p.id) AS image_count,
+                  ARRAY(SELECT i.media_type FROM post_images i WHERE i.post_id = p.id ORDER BY i.position) AS media_types,
                   EXISTS(SELECT 1 FROM post_likes l WHERE l.post_id = p.id AND l.user_id = ?) AS liked
                 FROM posts p $where
                 ORDER BY p.created_at DESC, p.id DESC LIMIT ?
@@ -90,7 +92,8 @@ class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
                             rows.getObject("created_at", OffsetDateTime::class.java).toInstant(),
                             (rows.getArray("tags").array as Array<*>).map { Hashtag(it as String) }.toSet(),
                             rows.getLong("like_count"), rows.getLong("comment_count"), rows.getBoolean("liked"), PostVisibility.parse(rows.getString("visibility")),
-                            PostFont.parse(rows.getString("font")), PostSize.parse(rows.getString("size")), rows.getInt("image_count")
+                            PostFont.parse(rows.getString("font")), PostSize.parse(rows.getString("size")), rows.getInt("image_count"),
+                            (rows.getArray("media_types").array as Array<*>).map { it as String }
                         ))
                     }
                 }
