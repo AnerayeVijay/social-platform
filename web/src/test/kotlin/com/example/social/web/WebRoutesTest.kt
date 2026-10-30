@@ -142,6 +142,7 @@ class WebRoutesTest {
         assertEquals(1, composer.select("input[type=file]").size)
         assertEquals("post-images", composer.selectFirst("input[type=file]")!!.id())
         val tools = composer.selectFirst(".composer-tools")!!
+        assertEquals("composer-tools", composer.selectFirst("textarea[name=body]")!!.nextElementSibling()!!.className())
         assertEquals(listOf("Photo", "Video", "Emoji", "Hashtags", "Poll"), tools.select("button.tool").map { it.text() })
         assertEquals(listOf("Photo", "Video", "Emoji", "Hashtags"), tools.select("button.tool:not([disabled])").map { it.text() })
         assertTrue(composer.select(".emoji-palette button[data-insert]").isNotEmpty())

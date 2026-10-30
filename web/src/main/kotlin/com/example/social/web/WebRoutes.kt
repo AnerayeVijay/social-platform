@@ -318,7 +318,7 @@ private fun audienceSelector(id: String, selected: PostVisibility): String =
     } + "</select><p class=\"audience-help\">Members only posts are visible to your approved followers. Private posts are visible only to you.</p>"
 
 private fun composer(session: Session, accounts: Accounts?): String =
-    "<details class=\"create-post\"><summary class=\"post-prompt\">Share your thoughts ...</summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">${composerHead(session, accounts)}<label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What's happening? Share your thoughts, ideas or something interesting...\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${mediaPicker("post-images", Post.MAX_IMAGES)}${composerTools()}</form></section></details><script>$mediaPickerScript</script>"
+    "<details class=\"create-post\"><summary class=\"post-prompt\">Share your thoughts ...</summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">${composerHead(session, accounts)}<label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What's happening? Share your thoughts, ideas or something interesting...\"></textarea>${composerTools()}${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${mediaPicker("post-images", Post.MAX_IMAGES)}</form></section></details><script>$mediaPickerScript</script>"
 
 private fun composerHead(session: Session, accounts: Accounts?): String {
     val name = accounts?.byId(session.accountId)?.displayName ?: "Member"
@@ -355,7 +355,7 @@ private const val composerStyles = """
 .create-post{margin:1rem 0}.create-post>summary{list-style:none;cursor:pointer}.create-post>summary::-webkit-details-marker{display:none}
 .post-prompt{display:block;padding:.9rem 1rem;border:1px solid var(--line);border-radius:12px;color:var(--muted);font-size:1rem;background:transparent}
 .composer-head{display:flex;align-items:center;gap:.7rem;margin-bottom:.8rem}.composer-head p{margin:0;color:var(--muted);font-size:.8rem}.composer-head strong{display:block;font-size:1rem}.composer-head .composer-close{margin-left:auto}
-.composer-tools{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem;margin-top:.6rem;padding-top:.6rem;border-top:1px solid var(--line)}
+.composer textarea{border-radius:12px 12px 0 0}.composer-tools{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem;padding:.4rem .6rem;border:1px solid var(--line);border-top:0;border-radius:0 0 12px 12px}
 .composer-close{width:38px;min-height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;color:var(--ink);border:0;border-radius:50%}
 .composer-close svg{width:20px;height:20px}.composer-close:hover{background:var(--soft)}
 .tool{display:inline-flex;align-items:center;gap:.35rem;min-height:36px;padding:.3rem .5rem;background:transparent;color:var(--ink);border:0;border-radius:8px;font-size:.85rem;font-weight:500}
