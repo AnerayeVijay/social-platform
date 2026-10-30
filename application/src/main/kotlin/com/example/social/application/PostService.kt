@@ -18,15 +18,32 @@ interface PostRepository {
     fun appendComment(id: PostId, comment: Comment): Boolean =
         update(id) { it.copy(comments = it.comments + comment) } != null
     fun save(post: Post): Post
+    fun saveWithImages(post: Post, images: List<PostImage>): Post = throw UnsupportedOperationException()
+    fun image(id: PostId, position: Int, viewer: UserId?): PostImage? = null
     fun find(id: PostId): Post?
     fun page(limit: Int, before: Instant? = null): List<Post>
     fun findByHashtag(tag: Hashtag, limit: Int): List<Post>
     fun update(id: PostId, change: (Post) -> Post): Post?
 }
 
-class PostService(private val posts: PostRepository) {
-    fun publish(author: UserId, body: String, visibility: PostVisibility = PostVisibility.PUBLIC): Post =
-        posts.save(Post.publish(author, body).copy(visibility = visibility))
+/** A post submission whose images are raw, untrusted upload bytes. */
+class PostUpload(val body: String, val visibility: PostVisibility, val font: PostFont, val size: PostSize, val images: List<ByteArray>)
+
+class PostService(private val posts: PostRepository, private val images: MemberImageProcessor? = null, private val imageGate: ImageProcessingGate = ImageProcessingGate()) {
+    fun publish(author: UserId, body: String, visibility: PostVisibility = PostVisibility.PUBLIC, font: PostFont = PostFont.SANS, size: PostSize = PostSize.NORMAL): Post =
+        posts.save(Post.publish(author, body).copy(visibility = visibility, font = font, size = size))
+
+    /** Holds the shared image gate while [read] consumes the request, so only one upload is buffered and decoded at a time. */
+    fun publishUpload(author: UserId, read: () -> PostUpload): Post = imageGate.run {
+        val upload = read()
+        val processor = checkNotNull(images) { "Post images are not configured" }
+        val normalized = upload.images.map { PostImage("image/jpeg", processor.process(it, MemberImageKind.BACKGROUND)) }
+        val post = Post.publish(author, upload.body, imageCount = normalized.size)
+            .copy(visibility = upload.visibility, font = upload.font, size = upload.size)
+        posts.saveWithImages(post, normalized)
+    }
+
+    fun image(id: PostId, position: Int, viewer: UserId?): PostImage? = posts.image(id, position, viewer)
 
     fun get(id: PostId, viewer: UserId? = null): Post? = if (posts.readable(id, viewer)) posts.find(id) else null
     fun changeVisibility(id: PostId, owner: UserId, visibility: PostVisibility) {

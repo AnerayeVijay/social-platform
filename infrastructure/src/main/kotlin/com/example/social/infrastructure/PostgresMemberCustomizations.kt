@@ -8,10 +8,11 @@ import javax.sql.DataSource
 class PostgresMemberCustomizations(private val dataSource: DataSource) : MemberCustomizations {
     override fun preferences(owner: UserId): CustomizationPreferences = dataSource.connection.use { connection ->
         connection.prepareStatement("""
-            SELECT p.theme,p.bio,a.version AS avatar_version,b.version AS background_version FROM accounts u
+            SELECT p.theme,p.bio,a.version AS avatar_version,b.version AS background_version,h.version AS header_version FROM accounts u
             LEFT JOIN member_preferences p ON p.account_id=u.id
             LEFT JOIN member_images a ON a.account_id=u.id AND a.kind='avatar'
             LEFT JOIN member_images b ON b.account_id=u.id AND b.kind='background'
+            LEFT JOIN member_images h ON h.account_id=u.id AND h.kind='header'
             WHERE u.id=?
         """.trimIndent()).use { statement ->
             statement.setObject(1, owner.value)
@@ -20,7 +21,7 @@ class PostgresMemberCustomizations(private val dataSource: DataSource) : MemberC
                 else CustomizationPreferences(
                     rows.getString("theme")?.let { ThemeMode.valueOf(it.uppercase()) } ?: ThemeMode.SYSTEM,
                     rows.getString("bio").orEmpty(), rows.getObject("avatar_version", UUID::class.java),
-                    rows.getObject("background_version", UUID::class.java)
+                    rows.getObject("background_version", UUID::class.java), rows.getObject("header_version", UUID::class.java)
                 )
             }
         }

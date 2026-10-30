@@ -23,6 +23,9 @@ fun customizationSupport(next: HttpHandler, customization: CustomizationService,
         viewer.backgroundVersion?.let { version ->
             document.body().addClass("custom-background").attr("style", "--member-background: url('/media/background?v=$version')")
         }
+        viewer.headerVersion?.let { version ->
+            document.selectFirst(".topbar")?.addClass("custom-header")?.attr("style", "--member-header: url('/media/header?v=$version')")
+        }
         if (session != null) {
             (document.selectFirst(".account-controls") ?: document.selectFirst(".topbar-inner"))
                 ?.appendElement("a")?.attr("href", "/settings")?.attr("class", "settings-link")?.text("Settings")

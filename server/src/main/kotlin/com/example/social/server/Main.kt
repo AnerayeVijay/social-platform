@@ -12,13 +12,16 @@ import com.example.social.infrastructure.*
 import com.example.social.web.*
 import org.flywaydb.core.Flyway
 import org.http4k.routing.routes
-import org.http4k.server.Undertow
+import java.time.Duration
 import org.http4k.server.asServer
 
 fun main() {
     val dataSource = PostgresPostRepository.dataSource()
     Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate()
-    val service = PostService(PostgresPostRepository(dataSource))
+    // One gate for every upload path: only one untrusted image is buffered and decoded at a time process-wide.
+    val imageGate = ImageProcessingGate()
+    val rasterImages = RasterMemberImages()
+    val service = PostService(PostgresPostRepository(dataSource), rasterImages, imageGate)
     val accounts = PostgresAccounts(dataSource)
     val sessions = PostgresSessions(dataSource)
     val secureCookies = (System.getenv("COOKIE_SECURE") ?: "false").toBooleanStrict()
@@ -34,7 +37,7 @@ fun main() {
     val threads = CommentThreads(PostgresCommentThreads(dataSource))
     val articleRepository = PostgresArticleFeeds(dataSource)
     val articleFeeds = ArticleFeedService(articleRepository, fetcher = HttpArticleFeedFetcher(), content = articleRepository)
-    val customization = CustomizationService(PostgresMemberCustomizations(dataSource), RasterMemberImages())
+    val customization = CustomizationService(PostgresMemberCustomizations(dataSource), rasterImages, imageGate)
     val content = routes(settingsRoutes(customization, accounts, accountService, access), articleFeedRoutes(articleFeeds, access), commentRoutes(threads, access), webRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, articleFeeds),
         mobileReadRoutes(queries, accounts, access, follows), followRoutes(follows, access), postRoutes(service, access))
     val publicAccounts = AuthRateLimit().protect(routes(accountRoutes(accountService, accounts, sessions, access, secureCookies), authenticationRoutes(accountService, sessions, access)))
@@ -47,6 +50,6 @@ fun main() {
     val translator = System.getenv("GOOGLE_TRANSLATION_API_KEY")?.takeIf { it.isNotBlank() }?.let { GoogleTranslation(it) }
     val site = customizationSupport(serverRoutes(content, publicAccounts, google, access), customization, accounts, access)
     languageSupport(site, accounts, access, secureCookies, translator)
-        .asServer(Undertow(port)).start()
+        .asServer(ReadTimeoutUndertow(port, Duration.ofSeconds(15))).start()
     println("Openly web and API listening on http://localhost:$port")
 }

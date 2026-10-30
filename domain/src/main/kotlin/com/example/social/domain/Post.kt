@@ -62,6 +62,25 @@ enum class PostVisibility { PUBLIC, MEMBERS, PRIVATE;
     }
 }
 
+enum class PostFont { SANS, SERIF, MONOSPACE;
+    companion object {
+        fun parse(value: String): PostFont = entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+            ?: throw IllegalArgumentException("Invalid post font")
+    }
+}
+
+enum class PostSize { SMALL, NORMAL, LARGE;
+    companion object {
+        fun parse(value: String): PostSize = entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+            ?: throw IllegalArgumentException("Invalid post size")
+    }
+}
+
+class PostImage(val mediaType: String, bytes: ByteArray) {
+    private val content = bytes.copyOf()
+    val bytes: ByteArray get() = content.copyOf()
+}
+
 class Post(
     val id: PostId,
     val authorId: UserId,
@@ -70,7 +89,10 @@ class Post(
     val createdAt: Instant,
     likes: Set<UserId> = emptySet(),
     comments: List<Comment> = emptyList(),
-    val visibility: PostVisibility = PostVisibility.PUBLIC
+    val visibility: PostVisibility = PostVisibility.PUBLIC,
+    val font: PostFont = PostFont.SANS,
+    val size: PostSize = PostSize.NORMAL,
+    val imageCount: Int = 0
 ) {
     val hashtags: Set<Hashtag> = java.util.Collections.unmodifiableSet(LinkedHashSet(hashtags))
     val likes: Set<UserId> = java.util.Collections.unmodifiableSet(LinkedHashSet(likes))
@@ -79,31 +101,34 @@ class Post(
     fun copy(
         id: PostId = this.id, authorId: UserId = this.authorId, body: String = this.body,
         hashtags: Set<Hashtag> = this.hashtags, createdAt: Instant = this.createdAt,
-        likes: Set<UserId> = this.likes, comments: List<Comment> = this.comments, visibility: PostVisibility = this.visibility
-    ) = Post(id, authorId, body, hashtags, createdAt, likes, comments, visibility)
+        likes: Set<UserId> = this.likes, comments: List<Comment> = this.comments, visibility: PostVisibility = this.visibility,
+        font: PostFont = this.font, size: PostSize = this.size, imageCount: Int = this.imageCount
+    ) = Post(id, authorId, body, hashtags, createdAt, likes, comments, visibility, font, size, imageCount)
 
     override fun equals(other: Any?): Boolean = other is Post && id == other.id && authorId == other.authorId &&
-        body == other.body && hashtags == other.hashtags && createdAt == other.createdAt && likes == other.likes && comments == other.comments && visibility == other.visibility
-    override fun hashCode(): Int = listOf(id, authorId, body, hashtags, createdAt, likes, comments, visibility).hashCode()
+        body == other.body && hashtags == other.hashtags && createdAt == other.createdAt && likes == other.likes && comments == other.comments && visibility == other.visibility && font == other.font && size == other.size && imageCount == other.imageCount
+    override fun hashCode(): Int = listOf(id, authorId, body, hashtags, createdAt, likes, comments, visibility, font, size, imageCount).hashCode()
 
     init {
-        require(body.isNotBlank()) { "Post body must not be empty" }
+        require(imageCount in 0..MAX_IMAGES) { "Post must have at most $MAX_IMAGES images" }
+        require(body.isNotBlank() || imageCount > 0) { "Post body must not be empty" }
         require(body.length <= MAX_BODY_LENGTH) { "Post body must be at most $MAX_BODY_LENGTH characters" }
         require(hashtags == extractHashtags(body)) { "Hashtags must match the post body" }
     }
 
     companion object {
         const val MAX_BODY_LENGTH = 2_000
+        const val MAX_IMAGES = 4
 
         fun extractHashtags(body: String): Set<Hashtag> = Regex("(?<![A-Za-z0-9_])#([A-Za-z0-9_]{1,50})")
             .findAll(body).map { Hashtag.from(it.groupValues[1]) }.toSet()
 
-        fun publish(authorId: UserId, body: String, now: Instant = Instant.now()): Post {
+        fun publish(authorId: UserId, body: String, now: Instant = Instant.now(), imageCount: Int = 0): Post {
             val clean = body.trim()
-            require(clean.isNotEmpty()) { "Post body must not be empty" }
+            require(clean.isNotEmpty() || imageCount > 0) { "Post body must not be empty" }
             require(clean.length <= MAX_BODY_LENGTH) { "Post body must be at most $MAX_BODY_LENGTH characters" }
             val tags = extractHashtags(clean)
-            return Post(PostId.new(), authorId, clean, tags, now)
+            return Post(PostId.new(), authorId, clean, tags, now, imageCount = imageCount)
         }
     }
 

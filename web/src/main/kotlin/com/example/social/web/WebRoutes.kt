@@ -10,11 +10,11 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 
-fun webRoutes(queries: PostQueries, service: PostService? = null, access: AccessControl? = null, accounts: Accounts? = null, accountService: AccountService? = null, follows: FollowService? = null, googleIdentities: GoogleIdentities? = null, threads: CommentThreads? = null, articleFeeds: ArticleFeedService? = null): RoutingHttpHandler = routes(
+fun webRoutes(queries: PostQueries, service: PostService? = null, access: AccessControl? = null, accounts: Accounts? = null, accountService: AccountService? = null, follows: FollowService? = null, googleIdentities: GoogleIdentities? = null, threads: CommentThreads? = null, articleFeeds: ArticleFeedService? = null, uploadClock: java.time.Clock = java.time.Clock.systemUTC()): RoutingHttpHandler = routes(
     articleFeedWebRoutes(articleFeeds, access),
     commentWebRoutes(threads, access, accounts),
     followWebRoutes(follows, access),
-    contentRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads)
+    contentRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, uploadClock)
 ).withFilter(Filter { next -> { request ->
     val original = next(request)
     val response = if (request.uri.path == "/" && original.header("content-type")?.startsWith("text/html") == true)
@@ -26,7 +26,7 @@ fun webRoutes(queries: PostQueries, service: PostService? = null, access: Access
     else response.body(withAccountHeader(response.bodyString(), session))
 } })
 
-private fun contentRoutes(queries: PostQueries, service: PostService?, access: AccessControl?, accounts: Accounts?, accountService: AccountService?, follows: FollowService?, googleIdentities: GoogleIdentities?, threads: CommentThreads?): RoutingHttpHandler = routes(
+private fun contentRoutes(queries: PostQueries, service: PostService?, access: AccessControl?, accounts: Accounts?, accountService: AccountService?, follows: FollowService?, googleIdentities: GoogleIdentities?, threads: CommentThreads?, uploadClock: java.time.Clock): RoutingHttpHandler = routes(
     "/profiles/{id}" bind Method.GET to { request ->
         try {
             val id = UserId.parse(request.path("id")!!)
@@ -92,20 +92,25 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
     "/web/posts" bind Method.POST to { request ->
         val session = access?.session(request)
         if (session == null || service == null) Response(Status.UNAUTHORIZED).body("Sign in to publish")
+        else if (isMultipart(request)) publishUpload(request, session.accountId, service, uploadClock)
         else try {
             val fields = formFields(request)
-            val post = service.publish(session.accountId, fields["body"].orEmpty(), PostVisibility.parse(fields["visibility"] ?: "members"))
+            val post = service.publish(session.accountId, fields["body"].orEmpty(), PostVisibility.parse(fields["visibility"] ?: "members"),
+                PostFont.parse(fields["font"] ?: "sans"), PostSize.parse(fields["size"] ?: "normal"))
             Response(Status.SEE_OTHER).header("Location", "/web/posts/${post.id.value}")
         } catch (error: IllegalArgumentException) {
             htmlPage("Check your post", "<section class=\"card\"><h1>Check your post</h1><p>${escapeHtml(error.message.orEmpty())}</p><a href=\"/\">Back to feed</a></section>", Status.BAD_REQUEST)
         }
+    },
+    "/media/posts/{id}/{position}" bind Method.GET to { request ->
+        postMedia(request, service, access?.session(request)?.accountId)
     },
     "/web/posts/{id}" bind Method.GET to { request ->
         try {
             val id = PostId.parse(request.path("id")!!)
             val viewer = access?.session(request)?.accountId
             val post = queries.post(id, viewer) ?: service?.get(id, viewer)?.let {
-                PostSummary(it.id, it.authorId, it.body, it.createdAt, it.hashtags, it.likes.size.toLong(), it.comments.size.toLong(), viewer in it.likes, it.visibility)
+                PostSummary(it.id, it.authorId, it.body, it.createdAt, it.hashtags, it.likes.size.toLong(), it.comments.size.toLong(), viewer in it.likes, it.visibility, it.font, it.size, it.imageCount)
             }
             if (post == null) htmlPage("Post not found", "<section class=\"card\"><h1>Post not found</h1><a href=\"/\">Back to feed</a></section>", Status.NOT_FOUND)
             else {
@@ -155,7 +160,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                 val tagFilter = tag?.let { "&amp;tag=${encode(it.value)}" }.orEmpty()
                 append("<nav class=\"feed-tabs\" aria-label=\"Feed tabs\"><a class=\"button\" href=\"/?scope=all$tagFilter\"${if (scope == "all") " aria-current=\"page\"" else ""}>All posts</a> <a class=\"button\" href=\"/?scope=following$tagFilter\"${if (scope == "following") " aria-current=\"page\"" else ""}>Following</a> <a class=\"button\" href=\"/me/articles\">News &amp; Articles</a></nav>")
                 if (session != null && follows != null) append(followNavigation(follows, session))
-                if (session != null) append("<details class=\"create-post\"><summary class=\"button\"><span aria-hidden=\"true\">＋</span> <span>Create post</span></summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What would you like to share?\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}<p><button class=\"button\" type=\"submit\">Publish post</button></p></form></section></details>")
+                if (session != null) append("<details class=\"create-post\"><summary class=\"button\"><span aria-hidden=\"true\">＋</span> <span>Create post</span></summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What would you like to share?\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${styleSelectors()}${composerImages()}<p><button class=\"button\" type=\"submit\">Publish post</button></p></form></section></details>")
                 else append("<section class=\"card\"><strong>Join the conversation</strong><p><a class=\"button\" href=\"/login\">Sign in</a> <a href=\"/register\">Create an account</a></p></section>")
                 if (page.posts.isEmpty()) append("<section class=\"card empty\"><h2>No posts yet</h2><p>${if (scope == "following") "Follow members and wait for approval to see their posts here. Your own posts also appear here." else "This space is ready for its first conversation."}</p><a href=\"/\">Back to all posts</a></section>")
                 page.posts.forEach { post -> append(postCard(post, session, accounts)) }
@@ -176,7 +181,8 @@ private fun postCard(post: PostSummary, session: Session? = null, accounts: Acco
     return """
     <article class="card post">
       <header class="post-header"><span class="avatar" aria-hidden="true" translate="no">${escapeHtml(memberInitials(author?.displayName ?: "Community member"))}</span><div><a href="/profiles/${post.authorId.value}"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong></a><br><time datetime="${post.createdAt}">${post.createdAt}</time></div></header>
-      <p class="post-body" translate="no">${escapeHtml(post.body)}</p>
+      <p class="post-body" data-font="${post.font.name.lowercase()}" data-size="${post.size.name.lowercase()}" translate="no">${escapeHtml(post.body)}</p>
+      ${postGallery(post)}
       <p class="post-audience">${audienceLabel(post.visibility)}</p>
       ${if (session?.accountId == post.authorId) "<details class=\"edit-audience\"><summary>Change audience</summary><form action=\"/web/posts/${post.id.value}/visibility\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">${audienceSelector("audience-${post.id.value}", post.visibility)}<button class=\"button\" type=\"submit\">Save audience</button></form></details>" else ""}
       <div class="tags">${post.hashtags.sortedBy { it.value }.joinToString(" ") { "<a href=\"/?tag=${encode(it.value)}\">#${escapeHtml(it.value)}</a>" }}</div>
@@ -192,6 +198,17 @@ internal fun memberInitials(name: String): String = name.trim().split(Regex("\\s
 internal fun escapeHtml(value: String): String = value.replace("&", "&amp;").replace("<", "&lt;")
     .replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
 private fun encode(value: String) = URLEncoder.encode(value, UTF_8)
+
+private fun postGallery(post: PostSummary): String = if (post.imageCount == 0) "" else
+    "<div class=\"post-gallery\" data-count=\"${post.imageCount}\">" + (0 until post.imageCount).joinToString("") {
+        "<a href=\"/media/posts/${post.id.value}/$it\"><img src=\"/media/posts/${post.id.value}/$it\" alt=\"Post image\" loading=\"lazy\"></a>"
+    } + "</div>"
+private fun fontLabel(font: PostFont) = when (font) { PostFont.SANS -> "Sans-serif"; PostFont.SERIF -> "Serif"; PostFont.MONOSPACE -> "Monospace" }
+private fun sizeLabel(size: PostSize) = when (size) { PostSize.SMALL -> "Small"; PostSize.NORMAL -> "Normal"; PostSize.LARGE -> "Large" }
+private fun styleSelectors(): String =
+    "<label for=\"post-font\">Font</label><select id=\"post-font\" name=\"font\" data-preview=\"font\">" + PostFont.entries.joinToString("") { "<option value=\"${it.name.lowercase()}\">${fontLabel(it)}</option>" } + "</select>" +
+    "<label for=\"post-size\">Text size</label><select id=\"post-size\" name=\"size\" data-preview=\"size\">" + PostSize.entries.joinToString("") { "<option value=\"${it.name.lowercase()}\"${if (it == PostSize.NORMAL) " selected" else ""}>${sizeLabel(it)}</option>" } + "</select>" +
+    "<script>document.querySelectorAll('[data-preview]').forEach(function(s){s.addEventListener('change',function(){document.getElementById('body').setAttribute('data-'+s.dataset.preview,s.value)})})</script>"
 
 private fun audienceLabel(visibility: PostVisibility): String = when (visibility) {
     PostVisibility.PUBLIC -> "Public"

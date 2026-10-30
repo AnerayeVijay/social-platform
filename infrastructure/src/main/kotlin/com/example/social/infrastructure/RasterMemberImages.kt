@@ -37,7 +37,7 @@ class RasterMemberImages(
         val upright = orient(source, exifOrientation(bytes))
         val normalized = when (kind) {
             MemberImageKind.AVATAR -> avatar(upright)
-            MemberImageKind.BACKGROUND -> background(upright)
+            MemberImageKind.BACKGROUND, MemberImageKind.HEADER -> background(upright)
         }
         return encodeJpeg(normalized)
     }

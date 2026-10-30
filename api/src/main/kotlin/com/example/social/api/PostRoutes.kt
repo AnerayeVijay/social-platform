@@ -1,7 +1,9 @@
 package com.example.social.api
 
 import com.example.social.application.PostService
+import com.example.social.domain.PostFont
 import com.example.social.domain.PostId
+import com.example.social.domain.PostSize
 import com.example.social.domain.UserId
 import com.example.social.domain.PostVisibility
 import com.example.social.http.AccessControl
@@ -17,13 +19,14 @@ import java.time.Instant
 
 private val mapper = jacksonObjectMapper()
 
-data class PublishRequest(val authorId: String = "", val body: String, val visibility: String = "members")
+data class PublishRequest(val authorId: String = "", val body: String, val visibility: String = "members", val font: String = "sans", val size: String = "normal")
 data class UserRequest(val userId: String = "")
 data class CommentRequest(val authorId: String = "", val body: String)
 data class VisibilityRequest(val visibility: String)
 data class PostResponse(
     val id: String, val authorId: String, val body: String, val hashtags: List<String>,
-    val likes: List<String>, val likeCount: Int, val comments: List<CommentResponse>, val createdAt: String, val visibility: String
+    val likes: List<String>, val likeCount: Int, val comments: List<CommentResponse>, val createdAt: String, val visibility: String,
+    val font: String = "sans", val size: String = "normal"
 )
 data class CommentResponse(val id: String, val authorId: String, val body: String, val createdAt: String, val parentId: String? = null)
 
@@ -31,7 +34,7 @@ private fun com.example.social.domain.Post.response() = PostResponse(
     id.value.toString(), authorId.value.toString(), body, hashtags.map { it.value }.sorted(),
     likes.map { it.value.toString() }.sorted(), likes.size,
     comments.map { CommentResponse(it.id.value.toString(), it.authorId.value.toString(), it.body, it.createdAt.toString(), it.parentId?.value?.toString()) },
-    createdAt.toString(), visibility.name.lowercase()
+    createdAt.toString(), visibility.name.lowercase(), font.name.lowercase(), size.name.lowercase()
 )
 
 fun routes(service: PostService, access: AccessControl? = null): RoutingHttpHandler = routes(
@@ -40,7 +43,7 @@ fun routes(service: PostService, access: AccessControl? = null): RoutingHttpHand
     "/posts" bind POST to { req ->
         safely {
             val body: PublishRequest = mapper.readValue(req.bodyString())
-            val post = service.publish(access?.session(req)?.accountId ?: UserId.parse(body.authorId), body.body, PostVisibility.parse(body.visibility))
+            val post = service.publish(access?.session(req)?.accountId ?: UserId.parse(body.authorId), body.body, PostVisibility.parse(body.visibility), PostFont.parse(body.font), PostSize.parse(body.size))
             json(Status.CREATED, post.response())
         }
     },

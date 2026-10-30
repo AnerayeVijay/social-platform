@@ -55,4 +55,24 @@ class PostAudienceRoutesTest {
         assertEquals(Status.NOT_FOUND, call(Method.GET, path, "other").status)
         assertEquals(Status.BAD_REQUEST, call(Method.POST, "/posts", body = """{"body":"Invalid","visibility":"unknown"}""").status)
     }
+
+    @Test fun `publish accepts font and size with sans normal defaults and rejects unknown presets`() {
+        val owner = UserId.new()
+        val rows = mutableMapOf<PostId, Post>()
+        val repository = object : PostRepository {
+            override fun save(post: Post) = post.also { rows[it.id] = it }
+            override fun find(id: PostId) = rows[id]
+            override fun page(limit: Int, before: Instant?) = rows.values.take(limit)
+            override fun findByHashtag(tag: Hashtag, limit: Int) = emptyList<Post>()
+            override fun update(id: PostId, change: (Post) -> Post) = rows[id]?.let(change)?.also { rows[id] = it }
+        }
+        val app = routes(PostService(repository))
+        fun publish(json: String) = app(Request(Method.POST, "/posts").body(json))
+        assertEquals(Status.CREATED, publish("""{"authorId":"${owner.value}","body":"plain"}""").status)
+        assertEquals(PostFont.SANS to PostSize.NORMAL, rows.values.single().let { it.font to it.size })
+        val styled = publish("""{"authorId":"${owner.value}","body":"styled","font":"serif","size":"large"}""")
+        assertTrue(styled.bodyString().contains("\"font\":\"serif\"") && styled.bodyString().contains("\"size\":\"large\""))
+        assertEquals(Status.BAD_REQUEST, publish("""{"authorId":"${owner.value}","body":"x","font":"comic-sans"}""").status)
+        assertEquals(Status.BAD_REQUEST, publish("""{"authorId":"${owner.value}","body":"x","size":"huge"}""").status)
+    }
 }

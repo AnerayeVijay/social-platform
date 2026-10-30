@@ -30,7 +30,8 @@ fun mobileReadRoutes(queries: PostQueries, accounts: Accounts, access: AccessCon
             apiJson(mapOf("posts" to page.posts.map { post -> mapOf(
                 "id" to post.id.value.toString(), "authorId" to post.authorId.value.toString(), "body" to post.body,
                 "createdAt" to post.createdAt.toString(), "hashtags" to post.hashtags.map { it.value }.sorted(),
-                "likeCount" to post.likeCount, "commentCount" to post.commentCount, "likedByViewer" to post.likedByViewer, "visibility" to post.visibility.name.lowercase()
+                "likeCount" to post.likeCount, "commentCount" to post.commentCount, "likedByViewer" to post.likedByViewer, "visibility" to post.visibility.name.lowercase(),
+                "font" to post.font.name.lowercase(), "size" to post.size.name.lowercase()
             ) }, "next" to page.next?.let(::encodePostCursor)))
         }
     },

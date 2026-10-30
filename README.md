@@ -140,7 +140,8 @@ After signing in, choose **Settings** in the header, or **Edit profile and appea
 profile. You can:
 
 - Select **Light**, **Dark**, or **System**. System follows the device's current light/dark setting.
-- Upload, replace, preview, or remove a personal background image. Only you see it, across the website.
+- Upload, replace, preview, or remove a personal body background image. Only you see it, across the website.
+- Upload, replace, preview, or remove a separate header background image shown in the top navigation. It is private to you, sitewide, and independent of the body background.
 - Edit your display name and public bio (up to 300 characters).
 - Upload, replace, or remove your public profile photo. Photos appear on your profile and wherever
   the site already displays your avatar; initials remain the fallback when there is no photo.
@@ -159,6 +160,24 @@ Only one image is processed at a time per server instance; busy uploads can be r
 Uploading requires JavaScript. Theme/profile editing and image removal use normal forms. Background
 images require an authenticated owner session, while profile photos are public wherever the global
 `MEMBERS_ONLY` policy permits access. These controls are website-only; existing mobile APIs are unchanged.
+
+### Post fonts and images
+
+In **Create post** choose a whole-post **Font** (sans-serif, serif, monospace) and **Text size**
+(small, normal, large); the editor previews them and readers see them in the feed, profiles and
+conversation. New posts can also include up to 4 JPEG or PNG images of 5 MB each (same 4096 pixel /
+16 megapixel caps as profile images). Selected images show previews with a **Remove image** button
+before publishing; images are shown in a gallery below the post text on the feed, profiles and
+conversation. A post may be image-only, but needs text or at least one image. Posts cannot be edited
+and existing posts are unchanged (sans-serif, normal size, no images).
+
+Images are re-encoded as JPEGs within 1920 × 1920 without metadata and stored in PostgreSQL. They
+follow the post's audience: `/media/posts/{id}/{position}` is readable only by viewers who may read the
+post. Image publishing requires JavaScript (it uses a multipart upload with the `X-CSRF-Token` header);
+without JavaScript the normal form still publishes text posts with font and size. The upload must
+finish within 60 seconds, otherwise it is rejected (408) and the composer keeps your text, images and
+style so you can retry. Uploads over the limits (413), busy image processing (429) and expired
+sessions (403) show a message in the composer.
 
 ### Personal news and article feeds
 

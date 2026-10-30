@@ -72,6 +72,70 @@ class CustomizationBrowserTest {
         }
     }
 
+    @Test fun `member uploads previews and removes a header image independently of the body background`() {
+        val fixture = CustomizationFixture()
+        fixture.app.asServer(Undertow(0)).start().use { server ->
+            val base = "http://localhost:${server.port()}"
+            Playwright.create().use { playwright ->
+                val options = BrowserType.LaunchOptions().setHeadless(true)
+                System.getenv("BROWSER_EXECUTABLE")?.let { options.setExecutablePath(Paths.get(it)) }
+                playwright.chromium().launch(options).use { browser ->
+                    browser.newContext().use { context ->
+                        context.addCookies(listOf(Cookie("session", "reader").setUrl(base)))
+                        val page = context.newPage()
+                        fun image(name: String, color: Color): FilePayload {
+                            val image = BufferedImage(200, 100, BufferedImage.TYPE_INT_RGB)
+                            image.createGraphics().let { graphics -> graphics.color = color; graphics.fillRect(0, 0, 200, 100); graphics.dispose() }
+                            return FilePayload(name, "image/png", ByteArrayOutputStream().also { ImageIO.write(image, "png", it) }.toByteArray())
+                        }
+                        fun topbarImage() = page.locator(".topbar").evaluate("el => getComputedStyle(el).backgroundImage").toString()
+                        fun bodyImage() = page.locator("body").evaluate("el => getComputedStyle(el).backgroundImage").toString()
+                        page.navigate("$base/settings")
+                        page.locator("#header-file").setInputFiles(image("header.png", Color.GREEN))
+                        page.locator("#upload-header").click()
+                        page.waitForSelector("#header-preview")
+                        assertEquals(true, page.locator("#header-preview").evaluate("img => img.complete && img.naturalWidth === 200"))
+                        assertTrue(topbarImage().contains("/media/header"))
+                        assertFalse(bodyImage().contains("/media/"))
+                        page.locator("#background-file").setInputFiles(image("background.png", Color.BLUE))
+                        page.locator("#upload-background").click()
+                        page.waitForSelector("#background-preview")
+                        assertTrue(topbarImage().contains("/media/header"))
+                        assertTrue(bodyImage().contains("/media/background"))
+                        page.getByText("Remove header image", Page.GetByTextOptions().setExact(true)).click()
+                        assertEquals(0, page.locator("#header-preview").count())
+                        assertFalse(topbarImage().contains("/media/header"))
+                        assertTrue(bodyImage().contains("/media/background"))
+                        browser.newContext().use { visitor -> assertEquals(401, visitor.request().get("$base/media/header").status()) }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun `settings label the two images Header background and Body background`() {
+        val fixture = CustomizationFixture()
+        fixture.app.asServer(Undertow(0)).start().use { server ->
+            val base = "http://localhost:${server.port()}"
+            Playwright.create().use { playwright ->
+                val options = BrowserType.LaunchOptions().setHeadless(true)
+                System.getenv("BROWSER_EXECUTABLE")?.let { options.setExecutablePath(Paths.get(it)) }
+                playwright.chromium().launch(options).use { browser ->
+                    browser.newContext().use { context ->
+                        context.addCookies(listOf(Cookie("session", "reader").setUrl(base)))
+                        val page = context.newPage()
+                        page.navigate("$base/settings")
+                        assertEquals("Header background", page.locator("#header-file").evaluate("el => el.closest('section').querySelector('h2').textContent"))
+                        assertEquals("Body background", page.locator("#background-file").evaluate("el => el.closest('section').querySelector('h2').textContent"))
+                        assertEquals("Header background", page.locator("label[for=header-file]").textContent())
+                        assertEquals("Body background", page.locator("label[for=background-file]").textContent())
+                        assertEquals(0, page.getByText("Background image", Page.GetByTextOptions().setExact(true)).count())
+                    }
+                }
+            }
+        }
+    }
+
     @Test fun `light dark and system themes render readable pages and persist across devices`() {
         val fixture = CustomizationFixture(postCount = 3)
         fixture.app.asServer(Undertow(0)).start().use { server ->

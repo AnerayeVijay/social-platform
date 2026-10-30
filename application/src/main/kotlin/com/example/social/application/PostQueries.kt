@@ -14,7 +14,10 @@ data class PostSummary(
     val likeCount: Long,
     val commentCount: Long,
     val likedByViewer: Boolean,
-    val visibility: PostVisibility = PostVisibility.PUBLIC
+    val visibility: PostVisibility = PostVisibility.PUBLIC,
+    val font: PostFont = PostFont.SANS,
+    val size: PostSize = PostSize.NORMAL,
+    val imageCount: Int = 0
 )
 
 data class FeedPage(val posts: List<PostSummary>, val next: PostCursor?)

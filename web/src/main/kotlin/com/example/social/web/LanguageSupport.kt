@@ -59,7 +59,7 @@ fun languageSupport(next: HttpHandler, accounts: Accounts, access: AccessControl
                         val trimmed = value.trim()
                         if (trimmed.isNotEmpty()) node.text(value.replace(trimmed, localizedText(trimmed, language)))
                     }
-                    listOf("placeholder", "aria-label").filter { element.hasAttr(it) }.forEach { attribute ->
+                    listOf("placeholder", "aria-label", "alt").filter { element.hasAttr(it) }.forEach { attribute ->
                         element.attr(attribute, localizedText(element.attr(attribute), language))
                     }
                 }

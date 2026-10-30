@@ -4,8 +4,8 @@ import com.example.social.domain.UserId
 import java.util.UUID
 
 enum class ThemeMode { LIGHT, DARK, SYSTEM }
-enum class MemberImageKind { AVATAR, BACKGROUND }
-data class CustomizationPreferences(val theme: ThemeMode = ThemeMode.SYSTEM, val bio: String = "", val avatarVersion: UUID? = null, val backgroundVersion: UUID? = null)
+enum class MemberImageKind { AVATAR, BACKGROUND, HEADER }
+data class CustomizationPreferences(val theme: ThemeMode = ThemeMode.SYSTEM, val bio: String = "", val avatarVersion: UUID? = null, val backgroundVersion: UUID? = null, val headerVersion: UUID? = null)
 /** Always a normalized JPEG. */
 data class MemberImage(val version: UUID, val bytes: ByteArray)
 interface MemberCustomizations {
@@ -21,8 +21,17 @@ fun interface MemberImageProcessor { fun process(bytes: ByteArray, kind: MemberI
 class ImageTooLarge : IllegalArgumentException("Images must be 5 MB or smaller")
 class ImageProcessingBusy : RuntimeException("Image processing is busy. Please try again.")
 
-class CustomizationService(private val store: MemberCustomizations, private val processor: MemberImageProcessor) {
-    private val imageProcessing = java.util.concurrent.Semaphore(1)
+/** One image decode at a time across the whole process, shared by every upload path. */
+class ImageProcessingGate {
+    private val permits = java.util.concurrent.Semaphore(1)
+    fun <T> run(block: () -> T): T {
+        if (!permits.tryAcquire()) throw ImageProcessingBusy()
+        try { return block() } finally { permits.release() }
+    }
+}
+
+class CustomizationService(private val store: MemberCustomizations, private val processor: MemberImageProcessor, private val imageGate: ImageProcessingGate) {
+    constructor(store: MemberCustomizations, processor: MemberImageProcessor) : this(store, processor, ImageProcessingGate())
     fun preferences(owner: UserId): CustomizationPreferences = store.preferences(owner)
 
     /** Accepts only the exact lowercase names light, dark and system. */
@@ -47,9 +56,7 @@ class CustomizationService(private val store: MemberCustomizations, private val 
     fun uploadImage(owner: UserId, kind: MemberImageKind, bytes: ByteArray) {
         if (bytes.size > MAX_UPLOAD_BYTES) throw ImageTooLarge()
         require(bytes.isNotEmpty()) { "Choose a JPEG or PNG image" }
-        if (!imageProcessing.tryAcquire()) throw ImageProcessingBusy()
-        try { store.saveImage(owner, kind, MemberImage(UUID.randomUUID(), processor.process(bytes, kind))) }
-        finally { imageProcessing.release() }
+        imageGate.run { store.saveImage(owner, kind, MemberImage(UUID.randomUUID(), processor.process(bytes, kind))) }
     }
 
     fun removeImage(owner: UserId, kind: MemberImageKind) = store.removeImage(owner, kind)

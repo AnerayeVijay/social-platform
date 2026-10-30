@@ -16,7 +16,7 @@ class CustomizationWebTest {
         val f = CustomizationFixture()
         f.store.saveBio(f.owner.id, "Settings")
         val app = languageSupport(f.app, f.accounts, f.access, false)
-        val labels = listOf("Settings", "Theme", "Light", "Dark", "System", "Save appearance", "Bio", "Profile photo", "Background image", "Upload image", "Replace image", "Remove profile photo", "Remove background", "Edit profile and appearance")
+        val labels = listOf("Settings", "Theme", "Light", "Dark", "System", "Save appearance", "Bio", "Profile photo", "Header background", "Body background", "Upload image", "Replace image", "Remove profile photo", "Remove background", "Edit profile and appearance")
         Language.entries.filter { it != Language.ENGLISH }.forEach { language ->
             labels.forEach { label -> assertNotEquals(label, localizedText(label, language), "$label in ${language.code}") }
             f.accounts.update(f.owner.copy(language = language))
@@ -58,6 +58,45 @@ class CustomizationWebTest {
         assertTrue(fallback.select(".post-header .avatar img").isEmpty())
         assertEquals("R", fallback.selectFirst(".post-header .avatar")!!.text())
     }
+
+    @Test fun `header image is private validated csrf protected and independent of the body background`() {
+        val f = CustomizationFixture()
+        fun post(path: String, who: String = "reader", csrf: String? = if (who == "reader") "csrf" else "other-csrf", body: ByteArray = png()): Response =
+            f.app(Request(Method.POST, path).header("Cookie", "session=$who").let { if (csrf == null) it else it.header("X-CSRF-Token", csrf) }
+                .header("Content-Type", "image/png").body(Body(java.nio.ByteBuffer.wrap(body))))
+        assertEquals(Status.UNAUTHORIZED, f.app(Request(Method.GET, "/media/header")).status)
+        assertEquals(Status.NOT_FOUND, f.get("/media/header").status)
+        assertNotEquals(Status.SEE_OTHER, post("/settings/images/header", csrf = null).status)
+        assertNotEquals(Status.SEE_OTHER, post("/settings/images/header", csrf = "wrong").status)
+        assertNull(f.store.image(f.owner.id, MemberImageKind.HEADER))
+        assertEquals(Status.BAD_REQUEST, post("/settings/images/header", body = "not an image".toByteArray()).status)
+        assertEquals(Status.BAD_REQUEST, post("/settings/images/header", body = ByteArray(0)).status)
+        assertEquals(Status.REQUEST_ENTITY_TOO_LARGE, post("/settings/images/header", body = ByteArray(CustomizationService.MAX_UPLOAD_BYTES + 1)).status)
+        assertNull(f.store.image(f.owner.id, MemberImageKind.HEADER))
+        f.store.saveImage(f.owner.id, MemberImageKind.BACKGROUND, MemberImage(UUID.randomUUID(), byteArrayOf(2)))
+        assertEquals(Status.SEE_OTHER, post("/settings/images/header").status)
+        val served = f.get("/media/header")
+        assertEquals(Status.OK, served.status)
+        assertEquals("image/jpeg", served.header("Content-Type"))
+        assertEquals("nosniff", served.header("X-Content-Type-Options"))
+        assertEquals("private, no-store", served.header("Cache-Control"))
+        assertEquals(Status.NOT_FOUND, f.get("/media/header", "other").status)
+        assertEquals(Status.OK, f.get("/media/background").status)
+        val other = Jsoup.parse(f.get("/", "other").bodyString())
+        assertFalse(other.selectFirst(".topbar")!!.hasClass("custom-header"))
+        assertEquals("no-store", f.get("/settings").header("Cache-Control"))
+        assertNotEquals(Status.SEE_OTHER, post("/settings/images/header/remove", csrf = null).status)
+        assertNotNull(f.store.image(f.owner.id, MemberImageKind.HEADER))
+        assertEquals(Status.SEE_OTHER, post("/settings/images/header/remove").status)
+        assertNull(f.store.image(f.owner.id, MemberImageKind.HEADER))
+        assertEquals(Status.NOT_FOUND, f.get("/media/header").status)
+        assertEquals(Status.OK, f.get("/media/background").status)
+    }
+}
+
+private fun png(): ByteArray {
+    val image = java.awt.image.BufferedImage(20, 10, java.awt.image.BufferedImage.TYPE_INT_RGB)
+    return java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(image, "png", it) }.toByteArray()
 }
 
 internal class CustomizationFixture(private val postCount: Int = 1) {
@@ -118,11 +157,11 @@ internal class MemoryMemberCustomizations : MemberCustomizations {
     override fun saveImage(owner: UserId, kind: MemberImageKind, image: MemberImage) {
         images[owner to kind] = image
         val old = preferences(owner)
-        preferences[owner] = if (kind == MemberImageKind.AVATAR) old.copy(avatarVersion = image.version) else old.copy(backgroundVersion = image.version)
+        preferences[owner] = when (kind) { MemberImageKind.AVATAR -> old.copy(avatarVersion = image.version); MemberImageKind.HEADER -> old.copy(headerVersion = image.version); MemberImageKind.BACKGROUND -> old.copy(backgroundVersion = image.version) }
     }
     override fun removeImage(owner: UserId, kind: MemberImageKind) {
         images.remove(owner to kind)
         val old = preferences(owner)
-        preferences[owner] = if (kind == MemberImageKind.AVATAR) old.copy(avatarVersion = null) else old.copy(backgroundVersion = null)
+        preferences[owner] = when (kind) { MemberImageKind.AVATAR -> old.copy(avatarVersion = null); MemberImageKind.HEADER -> old.copy(headerVersion = null); MemberImageKind.BACKGROUND -> old.copy(backgroundVersion = null) }
     }
 }

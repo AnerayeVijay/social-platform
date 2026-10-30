@@ -61,6 +61,7 @@ class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
                   ARRAY(SELECT h.name FROM hashtags h JOIN post_hashtags ph ON ph.hashtag_id = h.id WHERE ph.post_id = p.id) AS tags,
                   (SELECT count(*) FROM post_likes l WHERE l.post_id = p.id) AS like_count,
                   (SELECT count(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
+                  (SELECT count(*) FROM post_images i WHERE i.post_id = p.id) AS image_count,
                   EXISTS(SELECT 1 FROM post_likes l WHERE l.post_id = p.id AND l.user_id = ?) AS liked
                 FROM posts p $where
                 ORDER BY p.created_at DESC, p.id DESC LIMIT ?
@@ -88,7 +89,8 @@ class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
                             rows.getString("body"),
                             rows.getObject("created_at", OffsetDateTime::class.java).toInstant(),
                             (rows.getArray("tags").array as Array<*>).map { Hashtag(it as String) }.toSet(),
-                            rows.getLong("like_count"), rows.getLong("comment_count"), rows.getBoolean("liked"), PostVisibility.parse(rows.getString("visibility"))
+                            rows.getLong("like_count"), rows.getLong("comment_count"), rows.getBoolean("liked"), PostVisibility.parse(rows.getString("visibility")),
+                            PostFont.parse(rows.getString("font")), PostSize.parse(rows.getString("size")), rows.getInt("image_count")
                         ))
                     }
                 }

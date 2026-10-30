@@ -57,4 +57,42 @@ class PostgresMemberCustomizationsTest {
             }
         }
     }
+
+
+    @Test fun `background survives the header migration and header is stored independently per member`() {
+        PostgreSQLContainer<Nothing>("postgres:17-alpine").use { database ->
+            database.start()
+            HikariDataSource(HikariConfig().apply {
+                jdbcUrl = database.jdbcUrl; username = database.username; password = database.password
+            }).use { dataSource ->
+                Flyway.configure().dataSource(dataSource).target("13").load().migrate()
+                val owner = UserId.new()
+                val other = UserId.new()
+                val accounts = PostgresAccounts(dataSource)
+                accounts.create(Account(owner, "reader@example.com", "Reader", "hash", true))
+                accounts.create(Account(other, "other@example.com", "Other", "other-hash", true))
+                val background = MemberImage(UUID.randomUUID(), byteArrayOf(4, 5, 6))
+                PostgresMemberCustomizations(dataSource).saveImage(owner, MemberImageKind.BACKGROUND, background)
+                Flyway.configure().dataSource(dataSource).load().migrate()
+                val store = PostgresMemberCustomizations(dataSource)
+                assertEquals(CustomizationPreferences(backgroundVersion = background.version), store.preferences(owner))
+                assertContentEquals(background.bytes, store.image(owner, MemberImageKind.BACKGROUND)!!.bytes)
+                assertNull(store.image(owner, MemberImageKind.HEADER))
+                val header = MemberImage(UUID.randomUUID(), byteArrayOf(7, 8))
+                store.saveImage(owner, MemberImageKind.HEADER, header)
+                assertEquals(CustomizationPreferences(backgroundVersion = background.version, headerVersion = header.version), store.preferences(owner))
+                val replacement = MemberImage(UUID.randomUUID(), byteArrayOf(9))
+                store.saveImage(owner, MemberImageKind.HEADER, replacement)
+                assertContentEquals(replacement.bytes, store.image(owner, MemberImageKind.HEADER)!!.bytes)
+                assertEquals(replacement.version, store.preferences(owner).headerVersion)
+                assertContentEquals(background.bytes, store.image(owner, MemberImageKind.BACKGROUND)!!.bytes)
+                assertEquals(CustomizationPreferences(), store.preferences(other))
+                assertNull(store.image(other, MemberImageKind.HEADER))
+                store.removeImage(owner, MemberImageKind.HEADER)
+                assertNull(store.image(owner, MemberImageKind.HEADER))
+                assertEquals(CustomizationPreferences(backgroundVersion = background.version), store.preferences(owner))
+                assertContentEquals(background.bytes, store.image(owner, MemberImageKind.BACKGROUND)!!.bytes)
+            }
+        }
+    }
 }
