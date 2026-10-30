@@ -129,4 +129,31 @@ class MediaUploadsTest {
         assertFailsWith<MediaUploadTooLarge> { read(request, max = 1) }
         assertTrue(sent <= maximumRead)
     }
+
+    @Test fun `scalar fields are bounded before they are materialized`() {
+        val head = "--$b\r\nContent-Disposition: form-data; name=\"body\"\r\n\r\n".toByteArray()
+        var sent = 0
+        val maximumRead = 80 * 1024
+        val source = object : InputStream() {
+            override fun read(): Int {
+                check(sent < maximumRead) { "Reader buffered an unbounded field" }
+                return if (sent < head.size) head[sent++].toInt() and 255 else { sent++; 'x'.code }
+            }
+            override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+                check(sent + length <= maximumRead) { "Reader buffered an unbounded field" }
+                if (sent < head.size) {
+                    val n = minOf(length, head.size - sent)
+                    head.copyInto(bytes, offset, sent, sent + n)
+                    sent += n
+                    return n
+                }
+                bytes.fill('x'.code.toByte(), offset, offset + length)
+                sent += length
+                return length
+            }
+        }
+        val request = Request(Method.POST, "/").header("Content-Type", "multipart/form-data; boundary=$b").body(Body(source))
+        assertFailsWith<MediaUploadTooLarge> { read(request) }
+        assertTrue(sent <= maximumRead)
+    }
 }

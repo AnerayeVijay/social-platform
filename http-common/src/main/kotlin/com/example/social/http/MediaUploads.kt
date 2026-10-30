@@ -69,23 +69,31 @@ private fun readParts(request: Request, maxAttachments: Int, allowedFields: Set<
     val fields = mutableMapOf<String, String>()
     val attachments = mutableListOf<AttachmentUpload>()
     val maxParts = allowedFields.size + maxAttachments + 1 // one slot for an ignored empty file input
-    request.multipartIterator().asSequence().forEachIndexed { index, part ->
+    val boundary = Header.CONTENT_TYPE(request)!!.directives.first().second!!
+    // multipartIterator materializes scalar fields before returning them. Read the parser's raw part
+    // streams instead, so the scalar budget applies before any String allocation.
+    val parts = MultipartStreams.parse(boundary, request.body.stream)
+    parts.forEachIndexed { index, part ->
         if (index >= maxParts) throw malformed()
-        when (part) {
-            is MultipartEntity.Field -> {
-                if (part.name !in allowedFields || part.value.length > MAX_FIELD_BYTES || fields.put(part.name, part.value) != null) throw malformed()
-            }
-            is MultipartEntity.File -> part.file.content.use { content ->
-                if (part.name !in FILE_FIELDS) throw malformed()
+        part.content().use { content ->
+            val name = part.name() ?: throw malformed()
+            if (part.field()) {
+                if (name !in allowedFields || name in fields) throw malformed()
+                val bytes = content.readNBytes(MAX_FIELD_BYTES + 1)
+                if (bytes.size > MAX_FIELD_BYTES) throw MediaUploadTooLarge()
+                fields[name] = bytes.toString(Charsets.UTF_8)
+            } else {
+                if (name !in FILE_FIELDS) throw malformed()
                 // Browsers submit an unselected file input as an empty part with filename="".
-                if (part.file.filename.isBlank()) {
+                val filename = part.filename().orEmpty()
+                if (filename.isBlank()) {
                     if (content.read() != -1) throw malformed()
                 } else {
                     if (attachments.size == maxAttachments) throw malformed()
-                    val limit = AttachmentPolicy.maxBytes(part.file.filename)
+                    val limit = AttachmentPolicy.maxBytes(filename)
                     val bytes = content.readNBytes(limit + 1)
                     if (bytes.size > limit) throw MediaUploadTooLarge()
-                    attachments += AttachmentUpload(part.file.filename, bytes)
+                    attachments += AttachmentUpload(filename, bytes)
                 }
             }
         }
