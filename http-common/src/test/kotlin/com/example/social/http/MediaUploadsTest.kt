@@ -56,7 +56,7 @@ class MediaUploadsTest {
 
     @Test fun `actual stream over budget is rejected despite false content length`() {
         val limit = 1L * 100 * 1024 * 1024 + 64 * 1024
-        val head = "--$b\r\nContent-Disposition: form-data; name=\"attachments\"; filename=\"a\"\r\nContent-Type: video/mp4\r\n\r\n".toByteArray()
+        val head = "--$b\r\nContent-Disposition: form-data; name=\"attachments\"; filename=\"a.mp4\"\r\nContent-Type: video/mp4\r\n\r\n".toByteArray()
         val stream = object : InputStream() {
             var sent = 0L
             override fun read(): Int = if (sent < head.size) head[sent++.toInt()].toInt() else { sent++; 1 }
@@ -101,5 +101,32 @@ class MediaUploadsTest {
         withMediaUpload { assertFailsWith<MediaUploadBusy> { withMediaUpload { } } }
         assertFailsWith<MediaUploadBusy> { withMediaUpload { withMediaUpload { } } }
         assertEquals(2, withMediaUpload { 2 })
+    }
+
+    @Test fun `image size is bounded during reading rather than using the video allowance`() {
+        val head = "--$b\r\nContent-Disposition: form-data; name=\"attachments\"; filename=\"large.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".toByteArray()
+        val maximumRead = 20 * 1024 * 1024 + 64 * 1024
+        var sent = 0
+        val source = object : InputStream() {
+            override fun read(): Int {
+                check(sent < maximumRead) { "Reader exceeded the image allowance" }
+                return if (sent < head.size) head[sent++].toInt() and 255 else { sent++; 1 }
+            }
+            override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+                check(sent + length <= maximumRead) { "Reader exceeded the image allowance" }
+                if (sent < head.size) {
+                    val n = minOf(length, head.size - sent)
+                    head.copyInto(bytes, offset, sent, sent + n)
+                    sent += n
+                    return n
+                }
+                bytes.fill(1, offset, offset + length)
+                sent += length
+                return length
+            }
+        }
+        val request = Request(Method.POST, "/").header("Content-Type", "multipart/form-data; boundary=$b").body(Body(source))
+        assertFailsWith<MediaUploadTooLarge> { read(request, max = 1) }
+        assertTrue(sent <= maximumRead)
     }
 }

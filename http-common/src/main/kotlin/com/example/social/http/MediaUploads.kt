@@ -77,11 +77,14 @@ private fun readParts(request: Request, maxAttachments: Int, allowedFields: Set<
             }
             is MultipartEntity.File -> part.file.content.use { content ->
                 if (part.name !in FILE_FIELDS) throw malformed()
-                val bytes = content.readNBytes(MAX_PART_BYTES + 1)
-                if (bytes.size > MAX_PART_BYTES) throw MediaUploadTooLarge()
                 // Browsers submit an unselected file input as an empty part with filename="".
-                if (!(bytes.isEmpty() && part.file.filename.isBlank())) {
+                if (part.file.filename.isBlank()) {
+                    if (content.read() != -1) throw malformed()
+                } else {
                     if (attachments.size == maxAttachments) throw malformed()
+                    val limit = AttachmentPolicy.maxBytes(part.file.filename)
+                    val bytes = content.readNBytes(limit + 1)
+                    if (bytes.size > limit) throw MediaUploadTooLarge()
                     attachments += AttachmentUpload(part.file.filename, bytes)
                 }
             }
