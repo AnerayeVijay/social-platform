@@ -52,6 +52,18 @@ class PostTest {
         assertTrue(Post.extractHashtags(body).isEmpty())
     }
 
+    @Test fun `editing a body recomputes its hashtags`() {
+        val post = Post.publish(author, "hello #old")
+        val edited = post.withBody("  hello #new #OLD  ")
+        assertEquals(setOf(Hashtag("new"), Hashtag("old")), edited.hashtags)
+        assertEquals(post.id, edited.id)
+        assertEquals("hello #new #OLD", edited.body)
+    }
+
+    @Test fun `editing to a blank body is rejected`() {
+        assertFailsWith<IllegalArgumentException> { Post.publish(author, "hello #old").withBody("   ") }
+    }
+
     @Test fun `blank post is rejected`() {
         assertFailsWith<IllegalArgumentException> { Post.publish(author, "   ") }
     }

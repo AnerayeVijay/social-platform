@@ -143,6 +143,11 @@ class Post(
         }
     }
 
+    fun withBody(newBody: String): Post {
+        val clean = newBody.trim()
+        return copy(body = clean, hashtags = extractHashtags(clean))
+    }
+
     fun like(userId: UserId): Post = copy(likes = likes + userId)
     fun unlike(userId: UserId): Post = copy(likes = likes - userId)
 
