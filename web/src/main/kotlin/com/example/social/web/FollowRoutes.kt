@@ -7,16 +7,27 @@ import org.http4k.core.*
 import org.http4k.routing.*
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets.UTF_8
+import java.time.Instant
 
 internal fun followForm(id: UserId, action: String, label: String, session: Session): String =
     "<form action=\"/web/follows/${id.value}/$action\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button class=\"button\" type=\"submit\">$label</button></form>"
 
 internal fun trendsCard(queries: PostQueries): String {
-    val tags = queries.trendingHashtags(5)
+    val tags = queries.trending(5, TrendWindow.DAY, Instant.now())
     if (tags.isEmpty()) return ""
     return "<section class=\"card trends\"><h2>What's happening</h2>" +
-        tags.joinToString("") { "<div class=\"trend\"><a href=\"/hashtags/${URLEncoder.encode(it.name, UTF_8)}\">#${escapeHtml(it.name)}</a><span>${it.posts} ${if (it.posts == 1L) "post" else "posts"}</span></div>" } +
-        "</section>"
+        tags.mapIndexed { index, trend -> trendRow(index + 1, trend) }.joinToString("") +
+        "<a href=\"/explore\">Explore all trends &rarr;</a></section>"
+}
+
+internal fun trendRow(rank: Int, trend: TrendingHashtag): String =
+    "<div class=\"trend\"><span class=\"trend-rank\">$rank</span><a href=\"/hashtags/${URLEncoder.encode(trend.name, UTF_8)}\">#${escapeHtml(trend.name)}</a>" +
+        "<span>${trend.posts} ${if (trend.posts == 1L) "post" else "posts"} · ${growthLabel(trend.growthPercent)}</span></div>"
+
+internal fun growthLabel(growthPercent: Long?): String = when {
+    growthPercent == null -> "New"
+    growthPercent >= 0 -> "▲ $growthPercent%"
+    else -> "▼ ${-growthPercent}%"
 }
 
 internal fun suggestionsCard(service: FollowService, session: Session): String {

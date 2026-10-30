@@ -177,6 +177,30 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
             htmlPage("Invalid hashtag", "<section class=\"card\"><h1>Invalid hashtag</h1><a href=\"/\">Return to feed</a></section>", Status.BAD_REQUEST)
         }
     },
+    "/explore" bind Method.GET to { request ->
+        try {
+            val period = request.query("period") ?: "24h"
+            val window = TrendWindow.parse(period)
+            val session = access?.session(request)
+            val trends = queries.trending(20, window, Instant.now())
+            val content = buildString {
+                append("<h1>Explore</h1><p>Trending hashtags and the latest conversations.</p>")
+                append("<nav class=\"feed-tabs\" aria-label=\"Trend period\">")
+                append(listOf("24h" to "Last 24 hours", "7d" to "Last 7 days").joinToString(" ") { (value, label) ->
+                    "<a class=\"button\" href=\"/explore?period=$value\"${if (value == period) " aria-current=\"page\"" else ""}>$label</a>"
+                })
+                append("</nav>")
+                append("<section class=\"card trends\"><h2>Trending</h2>")
+                if (trends.isEmpty()) append("<p>Nothing is trending yet.</p>")
+                trends.forEachIndexed { index, trend -> append(trendRow(index + 1, trend)) }
+                append("</section><h2>Latest posts</h2>")
+                queries.feed(20, null, session?.accountId).posts.forEach { append(postCard(it, session, accounts)) }
+            }
+            htmlPage("Explore", content)
+        } catch (_: IllegalArgumentException) {
+            htmlPage("Invalid period", "<section class=\"card\"><h1>Invalid trend period</h1><a href=\"/explore\">Back to explore</a></section>", Status.BAD_REQUEST)
+        }
+    },
     "/" bind Method.GET to { request ->
         try {
             val cursor = request.query("before")?.let(::decodePostCursor)
