@@ -10,8 +10,9 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 
-fun webRoutes(queries: PostQueries, service: PostService? = null, access: AccessControl? = null, accounts: Accounts? = null, accountService: AccountService? = null, follows: FollowService? = null, googleIdentities: GoogleIdentities? = null, threads: CommentThreads? = null, articleFeeds: ArticleFeedService? = null, uploadClock: java.time.Clock = java.time.Clock.systemUTC()): RoutingHttpHandler = routes(
+fun webRoutes(queries: PostQueries, service: PostService? = null, access: AccessControl? = null, accounts: Accounts? = null, accountService: AccountService? = null, follows: FollowService? = null, googleIdentities: GoogleIdentities? = null, threads: CommentThreads? = null, articleFeeds: ArticleFeedService? = null, uploadClock: java.time.Clock = java.time.Clock.systemUTC(), hashtagFollows: HashtagFollowService? = null): RoutingHttpHandler = routes(
     articleFeedWebRoutes(articleFeeds, access),
+    hashtagFollowWebRoutes(hashtagFollows, queries, access, accounts),
     commentWebRoutes(threads, access, accounts, uploadClock),
     followWebRoutes(follows, access),
     contentRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, uploadClock)
@@ -259,7 +260,7 @@ internal fun feedTabs(current: String, signedIn: Boolean, tagFilter: String = ""
     return "<nav class=\"feed-tabs\" aria-label=\"Feed tabs\">${tab("all", "All posts")} ${tab("following", "Following")}$mine ${tab("news", "News &amp; Articles", "/me/articles")}</nav>"
 }
 
-private fun postCard(post: PostSummary, session: Session? = null, accounts: Accounts? = null): String {
+internal fun postCard(post: PostSummary, session: Session? = null, accounts: Accounts? = null): String {
     val author = accounts?.byId(post.authorId)
     return """
     <article class="card post">
@@ -295,7 +296,7 @@ internal fun linkHashtags(text: String): String {
     return html.append(escapeHtml(text.substring(last))).toString()
 }
 
-private fun encode(value: String) = URLEncoder.encode(value, UTF_8)
+internal fun encode(value: String) = URLEncoder.encode(value, UTF_8)
 
 private fun postGallery(post: PostSummary): String = if (post.imageCount == 0) "" else
     "<div class=\"post-gallery\" data-count=\"${post.imageCount}\">" + (0 until post.imageCount).joinToString("") {

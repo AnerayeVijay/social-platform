@@ -44,7 +44,7 @@ fun main() {
     val articleFeeds = ArticleFeedService(articleRepository, fetcher = HttpArticleFeedFetcher(), content = articleRepository)
     val customization = CustomizationService(PostgresMemberCustomizations(dataSource), rasterImages, imageGate)
     val notifications = Notifications(PostgresNotifications(dataSource))
-    val content = routes(notificationWebRoutes(notifications, access), settingsRoutes(customization, accounts, accountService, access), articleFeedRoutes(articleFeeds, access), commentRoutes(threads, access), webRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, articleFeeds),
+    val content = routes(notificationWebRoutes(notifications, access), settingsRoutes(customization, accounts, accountService, access), articleFeedRoutes(articleFeeds, access), commentRoutes(threads, access), webRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, articleFeeds, hashtagFollows = hashtagFollows),
         mobileReadRoutes(queries, accounts, access, follows), followRoutes(follows, access), postRoutes(service, access), hashtagFollowRoutes(hashtagFollows, access), followedHashtagFeedRoutes(queries, access), hashtagRoutes(queries, access))
     val publicAccounts = AuthRateLimit().protect(routes(accountRoutes(accountService, accounts, sessions, access, secureCookies), authenticationRoutes(accountService, sessions, access)))
     val google = System.getenv("GOOGLE_CLIENT_ID")?.let {
