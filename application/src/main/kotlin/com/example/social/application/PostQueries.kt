@@ -22,6 +22,7 @@ data class PostSummary(
 )
 
 data class FeedPage(val posts: List<PostSummary>, val next: PostCursor?)
+data class HashtagCount(val name: String, val posts: Long)
 data class CommentCursor(val createdAt: Instant, val id: CommentId)
 data class CommentPage(val comments: List<Comment>, val next: CommentCursor?)
 
@@ -32,4 +33,5 @@ interface PostQueries {
     fun post(id: PostId, viewer: UserId? = null): PostSummary? = null
     fun feed(limit: Int, before: PostCursor? = null, viewer: UserId? = null, tag: Hashtag? = null, author: UserId? = null): FeedPage
     fun comments(post: PostId, limit: Int, after: CommentCursor? = null): CommentPage
+    fun trendingHashtags(limit: Int): List<HashtagCount> = emptyList()
 }

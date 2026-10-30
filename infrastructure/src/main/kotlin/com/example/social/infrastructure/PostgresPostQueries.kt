@@ -8,6 +8,15 @@ import java.util.UUID
 import javax.sql.DataSource
 
 class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
+    override fun trendingHashtags(limit: Int): List<HashtagCount> {
+        require(limit in 1..50) { "limit must be between 1 and 50" }
+        return dataSource.connection.use { connection ->
+            connection.prepareStatement("SELECT h.name, COUNT(*) AS posts FROM post_hashtags ph JOIN hashtags h ON h.id = ph.hashtag_id JOIN posts p ON p.id = ph.post_id WHERE p.visibility = 'public' AND p.created_at > now() - interval '7 days' GROUP BY h.name ORDER BY posts DESC, h.name LIMIT ?").use { statement ->
+                statement.setInt(1, limit)
+                statement.executeQuery().use { rows -> buildList { while (rows.next()) add(HashtagCount(rows.getString(1), rows.getLong(2))) } }
+            }
+        }
+    }
     override fun comments(post: PostId, limit: Int, after: CommentCursor?): CommentPage = visibleComments(post, limit, after, null)
     override fun visibleComments(post: PostId, limit: Int, after: CommentCursor?, viewer: UserId?): CommentPage {
         require(limit in 1..100) { "limit must be between 1 and 100" }
