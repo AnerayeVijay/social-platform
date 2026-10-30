@@ -318,7 +318,7 @@ private fun audienceSelector(id: String, selected: PostVisibility): String =
     } + "</select><p class=\"audience-help\">Members only posts are visible to your approved followers. Private posts are visible only to you.</p>"
 
 private fun composer(session: Session, accounts: Accounts?): String =
-    "<details class=\"create-post\"><summary class=\"post-prompt\">Share your thoughts ...</summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">${composerHead(session, accounts)}<label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What's happening? Share your thoughts, ideas or something interesting...\"></textarea>${composerTools()}${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${mediaPicker("post-images", Post.MAX_IMAGES)}</form></section></details><script>$mediaPickerScript</script>"
+    "<details class=\"create-post\"><summary class=\"post-prompt\">Share your thoughts ...</summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">${composerHead(session, accounts)}<label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What's happening? Share your thoughts, ideas or something interesting...\"></textarea>${composerTools()}${mediaPicker("post-images", Post.MAX_IMAGES)}${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${composerFooter()}</form></section></details><script>$mediaPickerScript</script>"
 
 private fun composerHead(session: Session, accounts: Accounts?): String {
     val name = accounts?.byId(session.accountId)?.displayName ?: "Member"
@@ -339,7 +339,7 @@ private fun composerTools(): String {
         composerTool("Poll", composerIcon("""<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-5M12 17V8M16 17v-3"/>"""))
     ).joinToString("")
     val palette = EMOJI.joinToString("") { "<button type=\"button\" data-insert=\"$it\">$it</button>" }
-    return "<div class=\"composer-tools\">$tools<button class=\"publish\" type=\"submit\">Post</button></div>" +
+    return "<div class=\"composer-tools\">$tools</div>" +
         "<div class=\"emoji-palette\" id=\"emoji-palette\" hidden>$palette</div>" +
         "<script>document.querySelectorAll('[data-attach]').forEach(function(b){b.addEventListener('click',function(){document.getElementById(b.dataset.attach).click()})});" +
         "document.querySelectorAll('[data-toggle]').forEach(function(b){b.addEventListener('click',function(){var p=document.getElementById(b.dataset.toggle);p.hidden=!p.hidden})});" +
@@ -351,6 +351,8 @@ private val EMOJI = listOf("😀", "😂", "😍", "👍", "🎉", "🔥", "❤�
 private fun composerTool(label: String, icon: String, enabled: Boolean = false, attributes: String = ""): String =
     "<button type=\"button\" class=\"tool\"$attributes${if (enabled) "" else " disabled title=\"Coming soon\""}>$icon<span>$label</span></button>"
 
+private fun composerFooter(): String = "<div class=\"composer-footer\"><button class=\"publish\" type=\"submit\">Post</button></div>"
+
 private const val composerStyles = """
 .create-post{margin:1rem 0}.create-post>summary{list-style:none;cursor:pointer}.create-post>summary::-webkit-details-marker{display:none}
 .post-prompt{display:block;padding:.9rem 1rem;border:1px solid var(--line);border-radius:12px;color:var(--muted);font-size:1rem;background:transparent}
@@ -360,7 +362,7 @@ private const val composerStyles = """
 .composer-close svg{width:20px;height:20px}.composer-close:hover{background:var(--soft)}
 .tool{display:inline-flex;align-items:center;gap:.35rem;min-height:36px;padding:.3rem .5rem;background:transparent;color:var(--ink);border:0;border-radius:8px;font-size:.85rem;font-weight:500}
 .tool svg{width:18px;height:18px}.tool:hover:not(:disabled){background:var(--soft)}.tool:disabled{opacity:.5;cursor:not-allowed}
-.composer-tools .publish{margin-left:auto;min-height:40px;padding:.5rem 1.4rem;background:#0f0f0f;color:#fff;border:0;border-radius:999px;font-weight:700}
+.composer-footer{display:flex;justify-content:flex-end;margin-top:.6rem}.composer-footer .publish{min-height:40px;padding:.5rem 1.4rem;background:#0f0f0f;color:#fff;border:0;border-radius:999px;font-weight:700}
 .composer .media-picker>label,.composer .media-picker>input[type=file]{position:absolute;left:-9999px}
 .emoji-palette{display:flex;flex-wrap:wrap;gap:.2rem;margin-top:.5rem}.emoji-palette[hidden]{display:none}.emoji-palette button{width:36px;min-height:36px;padding:0;font-size:1.2rem;background:transparent;border:0;border-radius:8px}.emoji-palette button:hover{background:var(--soft)}
 """

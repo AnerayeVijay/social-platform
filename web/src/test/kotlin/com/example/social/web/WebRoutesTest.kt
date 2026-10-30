@@ -147,7 +147,8 @@ class WebRoutesTest {
         assertEquals(listOf("Photo", "Video", "Emoji", "Hashtags"), tools.select("button.tool:not([disabled])").map { it.text() })
         assertTrue(composer.select(".emoji-palette button[data-insert]").isNotEmpty())
         assertEquals("button", composer.selectFirst(".composer-close")!!.attr("type"))
-        assertEquals("Post", tools.selectFirst("button[type=submit]")!!.text())
+        assertEquals("Post", composer.selectFirst("button[type=submit]")!!.text())
+        assertEquals("audience-help", composer.selectFirst("button[type=submit]")!!.parent()!!.previousElementSibling()!!.className())
     }
 
     @Test fun `signed in web composer publishes as current user`() {
