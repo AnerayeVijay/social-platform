@@ -24,12 +24,40 @@ class PostServiceTest {
             data.values.filter { tag in it.hashtags }.sortedByDescending { it.createdAt }.take(limit)
         override fun update(id: PostId, change: (Post) -> Post): Post? =
             data[id]?.let(change)?.also { data[id] = it }
+        override fun delete(id: PostId, owner: UserId): Boolean = find(id)?.takeIf { it.authorId == owner }?.let { data.remove(id) } != null
     }
 
     @Test fun `service publishes and queries hashtag`() {
         val service = PostService(InMemoryPosts())
         service.publish(UserId.new(), "Learning #Kotlin")
         assertEquals(1, service.byHashtag("KOTLIN", 10).size)
+    }
+
+    @Test fun `owner can edit a post and its hashtags follow the new body`() {
+        val service = PostService(InMemoryPosts())
+        val owner = UserId.new()
+        val post = service.publish(owner, "Hello #old")
+        val edited = service.edit(post.id, owner, "Hello #new")
+        assertEquals("Hello #new", edited.body)
+        assertEquals(setOf(Hashtag("new")), edited.hashtags)
+    }
+
+    @Test fun `only the owner can edit or delete a post`() {
+        val service = PostService(InMemoryPosts())
+        val owner = UserId.new()
+        val post = service.publish(owner, "Hello")
+        assertFailsWith<NoSuchElementException> { service.edit(post.id, UserId.new(), "Hijacked") }
+        assertFailsWith<NoSuchElementException> { service.delete(post.id, UserId.new()) }
+        assertEquals("Hello", service.get(post.id)!!.body)
+    }
+
+    @Test fun `owner deletes a post`() {
+        val service = PostService(InMemoryPosts())
+        val owner = UserId.new()
+        val post = service.publish(owner, "Hello #gone")
+        service.delete(post.id, owner)
+        assertEquals(null, service.get(post.id))
+        assertFailsWith<NoSuchElementException> { service.delete(post.id, owner) }
     }
 
     @Test fun `feed limit is bounded`() {

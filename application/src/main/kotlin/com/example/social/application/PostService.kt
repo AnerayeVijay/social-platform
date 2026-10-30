@@ -13,6 +13,11 @@ interface PostRepository {
         if (find(id)?.authorId != owner) return false
         return update(id) { it.copy(visibility = visibility) } != null
     }
+    fun editBody(id: PostId, owner: UserId, body: String): Post? {
+        if (find(id)?.authorId != owner) return null
+        return update(id) { it.withBody(body) }
+    }
+    fun delete(id: PostId, owner: UserId): Boolean = throw UnsupportedOperationException()
     fun setLike(id: PostId, user: UserId, liked: Boolean): Boolean =
         update(id) { if (liked) it.like(user) else it.unlike(user) } != null
     fun appendComment(id: PostId, comment: Comment): Boolean =
@@ -69,6 +74,13 @@ class PostService(private val posts: PostRepository, private val images: MemberI
     fun get(id: PostId, viewer: UserId? = null): Post? = if (posts.readable(id, viewer)) posts.find(id) else null
     fun changeVisibility(id: PostId, owner: UserId, visibility: PostVisibility) {
         if (!posts.changeVisibility(id, owner, visibility)) throw NoSuchElementException("Post not found")
+    }
+
+    fun edit(id: PostId, owner: UserId, body: String): Post =
+        posts.editBody(id, owner, body) ?: throw NoSuchElementException("Post not found")
+
+    fun delete(id: PostId, owner: UserId) {
+        if (!posts.delete(id, owner)) throw NoSuchElementException("Post not found")
     }
 
     fun feed(limit: Int, before: Instant? = null, viewer: UserId? = null): List<Post> {
