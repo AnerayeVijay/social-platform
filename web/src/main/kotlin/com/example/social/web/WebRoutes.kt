@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 
 fun webRoutes(queries: PostQueries, service: PostService? = null, access: AccessControl? = null, accounts: Accounts? = null, accountService: AccountService? = null, follows: FollowService? = null, googleIdentities: GoogleIdentities? = null, threads: CommentThreads? = null, articleFeeds: ArticleFeedService? = null, uploadClock: java.time.Clock = java.time.Clock.systemUTC(), hashtagFollows: HashtagFollowService? = null): RoutingHttpHandler = routes(
+    brandRoutes(),
     articleFeedWebRoutes(articleFeeds, access),
     hashtagFollowWebRoutes(hashtagFollows, queries, access, accounts),
     commentWebRoutes(threads, access, accounts, uploadClock),
