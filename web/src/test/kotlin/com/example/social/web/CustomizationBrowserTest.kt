@@ -14,6 +14,40 @@ import javax.imageio.ImageIO
 import kotlin.test.*
 
 class CustomizationBrowserTest {
+    @Test fun `sidebar account navigation stays visible and ordered on desktop and phones`() {
+        val fixture = CustomizationFixture()
+        fixture.app.asServer(Undertow(0)).start().use { server ->
+            val base = "http://localhost:${server.port()}"
+            Playwright.create().use { playwright ->
+                val options = BrowserType.LaunchOptions().setHeadless(true)
+                System.getenv("BROWSER_EXECUTABLE")?.let { options.setExecutablePath(Paths.get(it)) }
+                playwright.chromium().launch(options).use { browser ->
+                    browser.newContext().use { context ->
+                        context.addCookies(listOf(Cookie("session", "reader").setUrl(base)))
+                        val page = context.newPage()
+                        page.navigate("$base/")
+                        listOf(1280, 320).forEach { width ->
+                            page.setViewportSize(width, 800)
+                            val avatar = page.locator(".sidebar .avatar")
+                            val profile = page.locator(".sidebar .account-profile")
+                            val signOut = page.locator(".sidebar form[action='/logout'] button")
+                            assertTrue(avatar.isVisible, "avatar at $width px")
+                            assertTrue(profile.isVisible, "profile at $width px")
+                            assertTrue(signOut.isVisible, "sign out at $width px")
+                            assertTrue(avatar.boundingBox().y + avatar.boundingBox().height <= profile.boundingBox().y)
+                            assertTrue(profile.boundingBox().y + profile.boundingBox().height <= signOut.boundingBox().y)
+                            assertTrue(profile.boundingBox().height >= 44)
+                            assertTrue(signOut.boundingBox().height >= 44)
+                            assertEquals(false, page.evaluate("document.documentElement.scrollWidth > innerWidth"))
+                        }
+                        page.locator(".sidebar .account-profile").click()
+                        assertEquals("Reader", page.locator("main h1").textContent())
+                    }
+                }
+            }
+        }
+    }
+
     @Test fun `member uploads previews and removes images while background stays private and profile is public`() {
         val fixture = CustomizationFixture()
         fixture.app.asServer(Undertow(0)).start().use { server ->
