@@ -128,7 +128,10 @@ class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
     override fun followingFeed(viewer: UserId, limit: Int, before: PostCursor?, tag: Hashtag?, author: UserId?): FeedPage =
         select(limit, before, viewer, tag, author, null, following = true)
 
-    private fun select(limit: Int, before: PostCursor?, viewer: UserId?, tag: Hashtag?, author: UserId?, id: PostId?, following: Boolean = false): FeedPage {
+    override fun followedHashtagFeed(viewer: UserId, limit: Int, before: PostCursor?): FeedPage =
+        select(limit, before, viewer, null, null, null, hashtagsFollowedBy = viewer)
+
+    private fun select(limit: Int, before: PostCursor?, viewer: UserId?, tag: Hashtag?, author: UserId?, id: PostId?, following: Boolean = false, hashtagsFollowedBy: UserId? = null): FeedPage {
         require(limit in 1..100) { "limit must be between 1 and 100" }
         return dataSource.connection.use { connection ->
             val conditions = mutableListOf(postVisibilitySql())
@@ -137,6 +140,7 @@ class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
             if (author != null) conditions += "p.author_id = ?"
             if (id != null) conditions += "p.id = ?"
             if (following) conditions += "(p.author_id = ? OR EXISTS (SELECT 1 FROM member_follows f WHERE f.follower_id = ? AND f.followed_id = p.author_id AND f.status = 'accepted'))"
+            if (hashtagsFollowedBy != null) conditions += "EXISTS (SELECT 1 FROM post_hashtags ph JOIN hashtags h ON h.id = ph.hashtag_id JOIN hashtag_follows hf ON hf.name = h.name WHERE ph.post_id = p.id AND hf.member_id = ?)"
             val where = if (conditions.isEmpty()) "" else "WHERE " + conditions.joinToString(" AND ")
             connection.prepareStatement("""
                 SELECT p.*, $SUMMARY_COLUMNS
@@ -157,6 +161,7 @@ class PostgresPostQueries(private val dataSource: DataSource) : PostQueries {
                     statement.setObject(index++, viewer!!.value)
                     statement.setObject(index++, viewer.value)
                 }
+                if (hashtagsFollowedBy != null) statement.setObject(index++, hashtagsFollowedBy.value)
                 statement.setInt(index, limit + 1)
                 val posts = statement.executeQuery().use { rows -> buildList { while (rows.next()) add(rows.summary()) } }
                 val page = posts.take(limit)

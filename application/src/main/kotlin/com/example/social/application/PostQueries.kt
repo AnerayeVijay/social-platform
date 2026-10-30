@@ -50,6 +50,8 @@ interface PostQueries {
     fun followingFeed(viewer: UserId, limit: Int, before: PostCursor? = null, tag: Hashtag? = null, author: UserId? = null): FeedPage =
         throw UnsupportedOperationException("Following feed is not configured")
     fun post(id: PostId, viewer: UserId? = null): PostSummary? = null
+    fun followedHashtagFeed(viewer: UserId, limit: Int, before: PostCursor? = null): FeedPage =
+        throw UnsupportedOperationException("Followed hashtag feed is not configured")
     fun feed(limit: Int, before: PostCursor? = null, viewer: UserId? = null, tag: Hashtag? = null, author: UserId? = null): FeedPage
     fun comments(post: PostId, limit: Int, after: CommentCursor? = null): CommentPage
     fun trendingHashtags(limit: Int): List<HashtagCount> = emptyList()
