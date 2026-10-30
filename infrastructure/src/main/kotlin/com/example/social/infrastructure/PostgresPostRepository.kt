@@ -37,6 +37,11 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
             it.setString(1, visibility.name.lowercase()); it.setObject(2, id.value); it.setObject(3, owner.value); it.executeUpdate() == 1
         }
     }
+    override fun delete(id: PostId, owner: UserId): Boolean = dataSource.connection.use { c ->
+        c.prepareStatement("DELETE FROM posts WHERE id=? AND author_id=?").use {
+            it.setObject(1, id.value); it.setObject(2, owner.value); it.executeUpdate() == 1
+        }
+    }
     override fun setLike(id: PostId, user: UserId, liked: Boolean): Boolean = dataSource.connection.use { c ->
         c.autoCommit = false
         try {
@@ -125,6 +130,7 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
                     it.executeUpdate()
                 }
             }
+            syncHashtags(c, post)
             syncLikes(c, post)
             syncComments(c, post.copy(comments = emptyList()), post)
             NotificationWriter.addNewPost(c, post.id)
@@ -182,6 +188,10 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
         try {
             val current = load(c, id, lock = true) ?: run { c.rollback(); return null }
             val updated = change(current)
+            if (updated.body != current.body) c.prepareStatement("UPDATE posts SET body=? WHERE id=?").use {
+                it.setString(1, updated.body); it.setObject(2, id.value); it.executeUpdate()
+            }
+            syncHashtags(c, updated)
             syncLikes(c, updated)
             syncComments(c, current, updated)
             c.commit()
@@ -243,6 +253,24 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
             }
         }
         return row.copy(hashtags = tags, likes = likes, comments = comments)
+    }
+
+    private fun syncHashtags(c: Connection, post: Post) {
+        c.prepareStatement("DELETE FROM post_hashtags WHERE post_id = ?").use {
+            it.setObject(1, post.id.value); it.executeUpdate()
+        }
+        post.hashtags.forEach { tag ->
+            c.prepareStatement("INSERT INTO hashtags(name) VALUES (?) ON CONFLICT(name) DO NOTHING").use {
+                it.setString(1, tag.value); it.executeUpdate()
+            }
+            c.prepareStatement("""
+                INSERT INTO post_hashtags(post_id, hashtag_id)
+                SELECT ?, id FROM hashtags WHERE name = ?
+                ON CONFLICT DO NOTHING
+            """.trimIndent()).use {
+                it.setObject(1, post.id.value); it.setString(2, tag.value); it.executeUpdate()
+            }
+        }
     }
 
     private fun syncLikes(c: Connection, post: Post) {

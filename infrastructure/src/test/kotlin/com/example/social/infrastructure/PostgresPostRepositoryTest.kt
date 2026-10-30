@@ -37,6 +37,35 @@ class PostgresPostRepositoryTest {
         }
     }
 
+    @Test fun `editing a body replaces hashtag links and deleting removes the post and its links`() {
+        PostgreSQLContainer<Nothing>("postgres:17-alpine").use { database ->
+            database.start()
+            HikariDataSource(HikariConfig().apply {
+                jdbcUrl = database.jdbcUrl; username = database.username; password = database.password
+            }).use { dataSource ->
+                Flyway.configure().dataSource(dataSource).load().migrate()
+                val repository = PostgresPostRepository(dataSource)
+                val owner = UserId.new()
+                val post = repository.save(Post.publish(owner, "hello #old"))
+                repository.update(post.id) { it.withBody("hello #new") }
+                assertEquals(setOf(Hashtag("new")), repository.find(post.id)!!.hashtags)
+                assertEquals(1, linkCount(dataSource, post.id))
+
+                assertEquals(false, repository.delete(post.id, UserId.new()))
+                assertNotNull(repository.find(post.id))
+                assertEquals(true, repository.delete(post.id, owner))
+                assertNull(repository.find(post.id))
+                assertEquals(0, linkCount(dataSource, post.id))
+            }
+        }
+    }
+
+    private fun linkCount(dataSource: HikariDataSource, id: PostId): Int = dataSource.connection.use { c ->
+        c.prepareStatement("SELECT count(*) FROM post_hashtags WHERE post_id = ?").use { ps ->
+            ps.setObject(1, id.value); ps.executeQuery().use { rs -> rs.next(); rs.getInt(1) }
+        }
+    }
+
     @Test fun `targeted reactions and comments preserve existing likes and are idempotent`() {
         PostgreSQLContainer<Nothing>("postgres:17-alpine").use { database ->
             database.start()
