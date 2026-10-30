@@ -170,8 +170,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                 val tagFilter = tag?.let { "&amp;tag=${encode(it.value)}" }.orEmpty()
                 append(feedTabs(scope, session != null, tagFilter))
                 if (session != null && follows != null) append(followNavigation(follows, session))
-                if (session != null) append("<details class=\"create-post\"><summary class=\"button\"><span aria-hidden=\"true\">＋</span> <span>Create post</span></summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What would you like to share?\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${styleSelectors()}${mediaPicker("post-images", Post.MAX_IMAGES)}<p><button class=\"button\" type=\"submit\">Publish post</button></p></form></section></details>")
-                else append("<section class=\"card\"><strong>Join the conversation</strong><p><a class=\"button\" href=\"/login\">Sign in</a> <a href=\"/register\">Create an account</a></p></section>")
+                if (session == null) append("<section class=\"card\"><strong>Join the conversation</strong><p><a class=\"button\" href=\"/login\">Sign in</a> <a href=\"/register\">Create an account</a></p></section>")
                 if (page.posts.isEmpty()) append("<section class=\"card empty\"><h2>No posts yet</h2><p>${when (scope) { "following" -> "Follow members and wait for approval to see their posts here. Your own posts also appear here."; "mine" -> "You have not published any posts yet."; else -> "This space is ready for its first conversation." }}</p><a href=\"/\">Back to all posts</a></section>")
                 page.posts.forEach { post -> append(postCard(post, session, accounts)) }
                 page.next?.let {
@@ -237,9 +236,12 @@ private fun audienceSelector(id: String, selected: PostVisibility): String =
         "<option value=\"${it.name.lowercase()}\"${if (it == selected) " selected" else ""}>${audienceLabel(it)}</option>"
     } + "</select><p class=\"audience-help\">Members only posts are visible to your approved followers. Private posts are visible only to you.</p>"
 
+private fun composer(session: Session): String =
+    "<details class=\"create-post\"><summary class=\"button\"><span aria-hidden=\"true\">＋</span> <span>Create post</span></summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What would you like to share?\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${styleSelectors()}${mediaPicker("post-images", Post.MAX_IMAGES)}<p><button class=\"button\" type=\"submit\">Publish post</button></p></form></section></details><script>$mediaPickerScript</script>"
+
 internal fun withAccountHeader(html: String, session: Session): String {
     if (html.contains("class=\"account-controls\"")) return html
-    val navigation = "<span class=\"avatar account-avatar\" aria-hidden=\"true\" translate=\"no\">♙</span><a class=\"nav-link account-profile\" href=\"/profiles/${session.accountId.value}\">My profile</a>"
+    val navigation = "<span class=\"avatar account-avatar\" aria-hidden=\"true\" translate=\"no\">♙</span><a class=\"nav-link account-profile\" href=\"/profiles/${session.accountId.value}\">My profile</a>${composer(session)}"
     val signOut = "<form class=\"sidebar-signout\" action=\"/logout\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button type=\"submit\">Sign out</button></form>"
     return html.replaceFirst("</div></header>", "<nav class=\"account-controls\"></nav></div></header>")
         .replaceFirst("<nav class=\"account-navigation\" aria-label=\"Main navigation\">", "<nav class=\"account-navigation\" aria-label=\"Main navigation\">$navigation")

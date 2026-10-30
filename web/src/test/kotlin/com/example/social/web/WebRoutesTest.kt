@@ -10,15 +10,17 @@ import java.time.Instant
 import kotlin.test.*
 
 class WebRoutesTest {
-    @Test fun `feed omits the intro banner and retains tabs composer and posts`() {
+    @Test fun `feed omits the intro banner and retains tabs and posts while the composer lives in the left navigation`() {
         val fixture = CustomizationFixture()
         for (path in listOf("/", "/?scope=mine")) {
             val response = fixture.get(path)
             assertEquals(Status.OK, response.status)
-            val main = Jsoup.parse(response.bodyString()).selectFirst("main")!!
+            val document = Jsoup.parse(response.bodyString())
+            val main = document.selectFirst("main")!!
             assertTrue(main.select("section.intro").isEmpty(), path)
             assertEquals(1, main.select(".feed-tabs").size)
-            assertEquals(1, main.select(".create-post").size)
+            assertEquals(0, main.select(".create-post").size)
+            assertEquals(1, document.select("aside .account-navigation .create-post").size)
             assertEquals("A community post", main.selectFirst(".post-body")!!.text())
         }
     }
