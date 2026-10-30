@@ -36,6 +36,7 @@ fun customizationSupport(next: HttpHandler, customization: CustomizationService,
             element?.empty()?.appendElement("img")?.attr("src", "/media/profiles/${owner.value}?v=$version")
                 ?.attr("alt", "")?.attr("width", "42")?.attr("height", "42")
         }
+        if (session != null) avatar(document.selectFirst(".account-avatar"), session.accountId)
         document.select(".post-header, .member-result").forEach { card ->
             val id = card.selectFirst("a[href^=/profiles/]")?.attr("href")?.removePrefix("/profiles/")
                 ?.let { runCatching { UserId.parse(it) }.getOrNull() }

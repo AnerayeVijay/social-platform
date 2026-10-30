@@ -1,10 +1,29 @@
 package com.example.social.web
 
+import com.example.social.application.MemberImage
+import com.example.social.application.MemberImageKind
 import org.http4k.core.*
 import org.jsoup.Jsoup
+import java.util.UUID
 import kotlin.test.*
 
 class AccountNavigationTest {
+    @Test fun `sidebar shows the signed in members photo and falls back to their initials when removed`() {
+        val f = CustomizationFixture()
+        f.accounts.update(f.owner.copy(displayName = "Alex Reader"))
+        val photo = MemberImage(UUID.randomUUID(), byteArrayOf(1))
+        f.store.saveImage(f.owner.id, MemberImageKind.AVATAR, photo)
+        val own = Jsoup.parse(f.get("/").bodyString())
+        assertEquals("/media/profiles/${f.owner.id.value}?v=${photo.version}", own.selectFirst(".sidebar .avatar img")?.attr("src"))
+        val other = Jsoup.parse(f.get("/profiles/${f.owner.id.value}", "other").bodyString())
+        assertEquals("O", other.selectFirst(".sidebar .avatar")?.text())
+        assertTrue(other.select(".sidebar .avatar img").isEmpty())
+        f.store.removeImage(f.owner.id, MemberImageKind.AVATAR)
+        val fallback = Jsoup.parse(f.get("/").bodyString())
+        assertEquals("AR", fallback.selectFirst(".sidebar .avatar")?.text())
+        assertTrue(fallback.select(".sidebar .avatar img").isEmpty())
+    }
+
     @Test fun `account actions appear below the avatar in the sidebar instead of the header`() {
         val f = CustomizationFixture(notificationStore = MemoryNotificationStore())
         val page = Jsoup.parse(f.get("/").bodyString())
