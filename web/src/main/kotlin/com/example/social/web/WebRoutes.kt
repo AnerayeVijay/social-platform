@@ -139,7 +139,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                     append("<a href=\"/\">&larr; Back to feed</a><h1>Conversation</h1>")
                     val session = access?.session(request)
                     append(postCard(post, session, accounts))
-                    if (session != null) append("<section class=\"card\"><form action=\"/web/posts/${post.id.value}/comments\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"comment\">Add a comment</label><textarea id=\"comment\" name=\"body\" rows=\"3\" maxlength=\"1000\" required></textarea>${mediaPicker("comment-media", 1)}<p><button class=\"button\" type=\"submit\">Post comment</button></p></form></section>")
+                    if (session != null) append("<section class=\"card\"><form action=\"/web/posts/${post.id.value}/comments\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"comment\">Add a comment</label><textarea id=\"comment\" name=\"body\" rows=\"3\" maxlength=\"1000\" required></textarea>${composerTools()}${mediaPicker("comment-media", 1)}<p><button class=\"button\" type=\"submit\">Post comment</button></p></form></section>")
                     append("<h2>Comments</h2>")
                     if (comments.comments.isEmpty()) append("<section class=\"card empty\">No comments yet.</section>")
                     if (threadPage != null) threadPage.comments.forEach { append(commentCard(post.id, it, session, accounts)) }
@@ -334,13 +334,13 @@ private fun composerTools(): String {
     val tools = listOf(
         composerTool("Photo", composerIcon("""<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 9"/>"""), enabled = true, attributes = attach),
         composerTool("Video", composerIcon("""<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>"""), enabled = true, attributes = attach),
-        composerTool("Emoji", composerIcon("""<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4 4 0 0 0 7 0"/><circle cx="9" cy="10" r=".6"/><circle cx="15" cy="10" r=".6"/>"""), enabled = true, attributes = " data-toggle=\"emoji-palette\""),
+        composerTool("Emoji", composerIcon("""<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4 4 0 0 0 7 0"/><circle cx="9" cy="10" r=".6"/><circle cx="15" cy="10" r=".6"/>"""), enabled = true, attributes = " data-emoji"),
         composerTool("Hashtags", composerIcon("""<path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/>"""), enabled = true, attributes = " data-insert=\"#\""),
         composerTool("Poll", composerIcon("""<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-5M12 17V8M16 17v-3"/>"""))
     ).joinToString("")
     val palette = EMOJI.joinToString("") { "<button type=\"button\" data-insert=\"$it\">$it</button>" }
     return "<div class=\"composer-tools\">$tools</div>" +
-        "<div class=\"emoji-palette\" id=\"emoji-palette\" hidden>$palette</div>" +
+        "<div class=\"emoji-palette\" hidden>$palette</div>" +
         "<script>document.querySelectorAll('[data-attach]').forEach(function(b){b.addEventListener('click',function(){document.getElementById(b.dataset.attach).click()})});" +
         "document.querySelectorAll('[data-toggle]').forEach(function(b){b.addEventListener('click',function(){var p=document.getElementById(b.dataset.toggle);p.hidden=!p.hidden})});" +
         "document.querySelectorAll('[data-insert]').forEach(function(b){b.addEventListener('click',function(){var t=document.getElementById('body');t.focus();t.setRangeText(b.dataset.insert,t.selectionStart,t.selectionEnd,'end')})})</script>"
@@ -363,7 +363,7 @@ private const val composerStyles = """
 .tool{display:inline-flex;align-items:center;gap:.35rem;min-height:36px;padding:.3rem .5rem;background:transparent;color:var(--ink);border:0;border-radius:8px;font-size:.85rem;font-weight:500}
 .tool svg{width:18px;height:18px}.tool:hover:not(:disabled){background:var(--soft)}.tool:disabled{opacity:.5;cursor:not-allowed}
 .composer-footer{display:flex;justify-content:flex-end;margin-top:.6rem}.composer-footer .publish{min-height:40px;padding:.5rem 1.4rem;background:#0f0f0f;color:#fff;border:0;border-radius:999px;font-weight:700}
-.composer .media-picker>label,.composer .media-picker>input[type=file]{position:absolute;left:-9999px}
+.composer .media-picker>label,.composer .media-picker>input[type=file],form[action$="/comments"] .media-picker>label,form[action$="/comments"] .media-picker>input[type=file]{position:absolute;left:-9999px}
 .emoji-palette{display:flex;flex-wrap:wrap;gap:.2rem;margin-top:.5rem}.emoji-palette[hidden]{display:none}.emoji-palette button{width:36px;min-height:36px;padding:0;font-size:1.2rem;background:transparent;border:0;border-radius:8px}.emoji-palette button:hover{background:var(--soft)}
 """
 

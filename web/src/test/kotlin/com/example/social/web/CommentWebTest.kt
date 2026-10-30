@@ -72,6 +72,10 @@ class CommentWebTest {
         assertEquals(Status.SEE_OTHER, submit("$base/unlike").status)
         val rootPage = Jsoup.parse(get("/web/posts/${post.id.value}").bodyString())
         assertEquals("1", rootPage.selectFirst(".reply-count")!!.text())
+        val commentBox = rootPage.selectFirst("form[action='/web/posts/${post.id.value}/comments']")!!
+        assertEquals(listOf("Photo", "Video", "Emoji", "Hashtags", "Poll"), commentBox.select("button.tool").map { it.text() })
+        assertEquals(listOf("Photo", "Video", "Emoji", "Hashtags"), commentBox.select("button.tool:not([disabled])").map { it.text() })
+        assertEquals("comment-media", commentBox.selectFirst("input[type=file]")!!.id())
         val link = rootPage.selectFirst("a.view-replies")!!.attr("href")
         val thread = get(link)
         assertTrue(thread.bodyString().contains("Reply &lt;text&gt;"))
