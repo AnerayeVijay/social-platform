@@ -71,6 +71,24 @@ class PostgresHashtagQueriesTest {
         }
     }
 
+    @Test fun `hashtag search can use a trigram index on the name`() {
+        withDatabase { _, _, dataSource ->
+            val indexed = dataSource.connection.use { c ->
+                c.createStatement().use { s -> s.executeQuery("SELECT indexdef FROM pg_indexes WHERE indexname = 'hashtags_name_trgm_idx'").use { rs -> rs.next() } }
+            }
+            assertTrue(indexed)
+            val plan = dataSource.connection.use { c ->
+                c.createStatement().use { s ->
+                    s.execute("SET enable_seqscan = off")
+                    s.executeQuery("EXPLAIN SELECT id FROM hashtags WHERE name LIKE '%cri%'").use { rs ->
+                        buildString { while (rs.next()) appendLine(rs.getString(1)) }
+                    }
+                }
+            }
+            assertTrue(plan.contains("hashtags_name_trgm_idx"), plan)
+        }
+    }
+
     private fun queryTimestamp(dataSource: HikariDataSource, sql: String): Instant? = dataSource.connection.use { c ->
         c.createStatement().use { s -> s.executeQuery(sql).use { rs -> if (rs.next()) rs.getObject(1, java.time.OffsetDateTime::class.java).toInstant() else null } }
     }
