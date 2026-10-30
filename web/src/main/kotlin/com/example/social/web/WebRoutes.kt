@@ -306,12 +306,6 @@ private fun postGallery(post: PostSummary): String = if (post.imageCount == 0) "
     "<div class=\"post-gallery\" data-count=\"${post.imageCount}\">" + (0 until post.imageCount).joinToString("") {
         mediaItem("/media/posts/${post.id.value}/$it", post.mediaTypes.getOrNull(it) ?: LEGACY_MEDIA_TYPE, "Post image")
     } + "</div>"
-private fun fontLabel(font: PostFont) = when (font) { PostFont.SANS -> "Sans-serif"; PostFont.SERIF -> "Serif"; PostFont.MONOSPACE -> "Monospace" }
-private fun sizeLabel(size: PostSize) = when (size) { PostSize.SMALL -> "Small"; PostSize.NORMAL -> "Normal"; PostSize.LARGE -> "Large" }
-private fun styleSelectors(): String =
-    "<label for=\"post-font\">Font</label><select id=\"post-font\" name=\"font\" data-preview=\"font\">" + PostFont.entries.joinToString("") { "<option value=\"${it.name.lowercase()}\">${fontLabel(it)}</option>" } + "</select>" +
-    "<label for=\"post-size\">Text size</label><select id=\"post-size\" name=\"size\" data-preview=\"size\">" + PostSize.entries.joinToString("") { "<option value=\"${it.name.lowercase()}\"${if (it == PostSize.NORMAL) " selected" else ""}>${sizeLabel(it)}</option>" } + "</select>" +
-    "<script>document.querySelectorAll('[data-preview]').forEach(function(s){s.addEventListener('change',function(){document.getElementById('body').setAttribute('data-'+s.dataset.preview,s.value)})})</script>"
 
 private fun audienceLabel(visibility: PostVisibility): String = when (visibility) {
     PostVisibility.PUBLIC -> "Public"
@@ -324,7 +318,7 @@ private fun audienceSelector(id: String, selected: PostVisibility): String =
     } + "</select><p class=\"audience-help\">Members only posts are visible to your approved followers. Private posts are visible only to you.</p>"
 
 private fun composer(session: Session): String =
-    "<details class=\"create-post\"><summary class=\"post-prompt\">Share your thoughts ...</summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"Share your thoughts ...\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${styleSelectors()}${mediaPicker("post-images", Post.MAX_IMAGES)}${composerTools()}</form></section></details><script>$mediaPickerScript</script>"
+    "<details class=\"create-post\"><summary class=\"post-prompt\">Share your thoughts ...</summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"Share your thoughts ...\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${mediaPicker("post-images", Post.MAX_IMAGES)}${composerTools()}</form></section></details><script>$mediaPickerScript</script>"
 
 private fun composerIcon(body: String) = "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\">$body</svg>"
 
@@ -357,6 +351,7 @@ private const val composerStyles = """
 .tool-pill{min-height:34px;padding:.3rem .9rem;background:transparent;color:var(--ink);border:1px solid var(--ink);border-radius:999px;font-weight:600}
 .tool-pill:disabled{opacity:.6;cursor:not-allowed}
 .composer-tools .publish{margin-left:auto}
+.composer .media-picker>label{position:absolute;left:-9999px}
 """
 
 internal fun withAccountHeader(html: String, session: Session, path: String): String {

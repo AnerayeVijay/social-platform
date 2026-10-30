@@ -95,17 +95,15 @@ class PostImageBrowserTest {
         assertEquals(4, page.locator(".post-gallery img").evaluateAll("imgs => imgs.filter(i => i.complete && i.naturalWidth > 0).length"))
     }
 
-    @Test fun `failed upload keeps text images and style and re-enables the form`() = withPage { page, base ->
+    @Test fun `failed upload keeps text and images and re-enables the form`() = withPage { page, base ->
         page.route("**/web/posts") { route -> route.fulfill(com.microsoft.playwright.Route.FulfillOptions().setStatus(413).setBody("too big")) }
         page.navigate("$base/")
         page.locator(".create-post > summary").click()
-        page.locator("#post-font").selectOption("serif")
         page.locator("#body").fill("Keep me")
         page.locator("#post-images").setInputFiles(png("a.png"))
         page.getByText("Publish post", Page.GetByTextOptions().setExact(true)).click()
         page.waitForCondition { page.locator(".image-status").textContent().contains("too large") }
         assertEquals("Keep me", page.locator("#body").inputValue())
-        assertEquals("serif", page.locator("#post-font").inputValue())
         assertEquals(1, page.locator(".image-previews img").count())
         assertTrue(page.getByText("Publish post", Page.GetByTextOptions().setExact(true)).isEnabled)
         assertTrue(page.locator("#post-images").isEnabled)

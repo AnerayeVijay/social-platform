@@ -134,6 +134,9 @@ class WebRoutesTest {
         val composer = document.selectFirst(".create-post")!!
         assertEquals("Share your thoughts ...", composer.selectFirst("summary")!!.text())
         assertTrue(composer.selectFirst("summary")!!.children().isEmpty())
+        assertEquals(1, composer.select("select").size)
+        assertEquals("visibility", composer.selectFirst("select")!!.attr("name"))
+        assertEquals(1, composer.select(".audience-help").size)
         assertEquals("Share your thoughts ...", composer.selectFirst("textarea[name=body]")!!.attr("placeholder"))
         val tools = composer.selectFirst(".composer-tools")!!
         assertNotNull(tools.selectFirst("button[data-attach=post-images]"))
