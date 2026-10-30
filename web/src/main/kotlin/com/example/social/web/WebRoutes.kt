@@ -143,7 +143,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                     if (threadPage != null) threadPage.comments.forEach { append(commentCard(post.id, it, session, accounts)) }
                     else comments.comments.forEach { comment ->
                         val author = accounts?.byId(comment.authorId)
-                        append("<article class=\"card\"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong><p class=\"post-body\" translate=\"no\">${escapeHtml(comment.body)}</p>${commentAttachment(post.id, comment)}<time datetime=\"${comment.createdAt}\">${comment.createdAt}</time></article>")
+                        append("<article class=\"card\"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong><p class=\"post-body\" translate=\"no\">${linkHashtags(comment.body)}</p>${commentAttachment(post.id, comment)}<time datetime=\"${comment.createdAt}\">${comment.createdAt}</time></article>")
                     }
                     comments.next?.let { append("<a class=\"button\" href=\"/web/posts/${post.id.value}?after=${encode("${it.createdAt}|${it.id.value}")}\">More comments &rarr;</a>") }
                     if (threads != null) append(commentThreadScript)
@@ -152,6 +152,29 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
             }
         } catch (_: IllegalArgumentException) {
             htmlPage("Invalid request", "<h1>Invalid post or comment cursor</h1><a href=\"/\">Back to feed</a>", Status.BAD_REQUEST)
+        }
+    },
+    "/hashtags/{name}" bind Method.GET to { request ->
+        try {
+            val tag = Hashtag.from(request.path("name")!!)
+            val session = access?.session(request)
+            val viewer = session?.accountId
+            val popular = request.query("view") == "popular"
+            val page = if (popular) queries.feed(POPULAR_SAMPLE, null, viewer, tag)
+                else queries.feed(20, request.query("before")?.let(::decodePostCursor), viewer, tag)
+            val posts = if (popular) page.posts.sortedByDescending { it.likeCount + it.commentCount }.take(20) else page.posts
+            val count = queries.hashtagPostCount(tag, viewer)
+            val href = "/hashtags/${encode(tag.value)}"
+            val content = buildString {
+                append("<h1>#${escapeHtml(tag.value)}</h1><p>$count ${if (count == 1L) "post" else "posts"}</p>")
+                append("<nav class=\"feed-tabs\" aria-label=\"Hashtag feed tabs\"><a class=\"button\" href=\"$href\"${if (!popular) " aria-current=\"page\"" else ""}>Latest</a> <a class=\"button\" href=\"$href?view=popular\"${if (popular) " aria-current=\"page\"" else ""}>Popular</a></nav>")
+                if (posts.isEmpty()) append("<section class=\"card empty\"><h2>No posts yet</h2><p>Posts with #${escapeHtml(tag.value)} will appear here.</p><a href=\"/\">Back to all posts</a></section>")
+                posts.forEach { append(postCard(it, session, accounts)) }
+                if (!popular) page.next?.let { append("<nav class=\"pagination\" aria-label=\"Hashtag pagination\"><a class=\"button\" href=\"$href?before=${encode(encodePostCursor(it))}\">Older posts &rarr;</a></nav>") }
+            }
+            htmlPage("#${tag.value}", content)
+        } catch (_: IllegalArgumentException) {
+            htmlPage("Invalid hashtag", "<section class=\"card\"><h1>Invalid hashtag</h1><a href=\"/\">Return to feed</a></section>", Status.BAD_REQUEST)
         }
     },
     "/" bind Method.GET to { request ->
@@ -200,12 +223,12 @@ private fun postCard(post: PostSummary, session: Session? = null, accounts: Acco
     return """
     <article class="card post">
       <header class="post-header"><span class="avatar" aria-hidden="true" translate="no">${escapeHtml(memberInitials(author?.displayName ?: "Community member"))}</span><div><a href="/profiles/${post.authorId.value}"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong></a><br><time datetime="${post.createdAt}">${post.createdAt}</time></div></header>
-      <p class="post-body" data-font="${post.font.name.lowercase()}" data-size="${post.size.name.lowercase()}" translate="no">${escapeHtml(post.body)}</p>
+      <p class="post-body" data-font="${post.font.name.lowercase()}" data-size="${post.size.name.lowercase()}" translate="no">${linkHashtags(post.body)}</p>
       ${postGallery(post)}
       <p class="post-audience">${audienceLabel(post.visibility)}</p>
       ${if (session?.accountId == post.authorId) "<details class=\"edit-audience\"><summary>Change audience</summary><form action=\"/web/posts/${post.id.value}/visibility\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">${audienceSelector("audience-${post.id.value}", post.visibility)}<button class=\"button\" type=\"submit\">Save audience</button></form></details>" else ""}
       ${if (session?.accountId == post.authorId) "<details class=\"edit-post\"><summary>Edit post</summary><form action=\"/web/posts/${post.id.value}/edit\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"edit-body-${post.id.value}\">Post text</label><textarea id=\"edit-body-${post.id.value}\" name=\"body\" rows=\"3\" maxlength=\"2000\" required>${escapeHtml(post.body)}</textarea><p><button class=\"button\" type=\"submit\">Save changes</button></p></form></details><form class=\"delete-post\" action=\"/web/posts/${post.id.value}/delete\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button class=\"button\" type=\"submit\">Delete post</button></form>" else ""}
-      <div class="tags">${post.hashtags.sortedBy { it.value }.joinToString(" ") { "<a href=\"/?tag=${encode(it.value)}\">#${escapeHtml(it.value)}</a>" }}</div>
+      <div class="tags">${post.hashtags.sortedBy { it.value }.joinToString(" ") { "<a href=\"/hashtags/${encode(it.value)}\">#${escapeHtml(it.value)}</a>" }}</div>
       <footer class="post-footer"><span>${post.likeCount} likes</span><a href="/web/posts/${post.id.value}">${post.commentCount} comments</a><a href="/web/posts/${post.id.value}" class="read-post">Read post &rarr;</a></footer>
       ${session?.let { "<form action=\"/web/posts/${post.id.value}/${if (post.likedByViewer) "unlike" else "likes"}\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(it.csrf)}\"><button class=\"button\" type=\"submit\" aria-pressed=\"${post.likedByViewer}\">${if (post.likedByViewer) "Unlike" else "Like"}</button></form>" } ?: ""}
     </article>
@@ -217,6 +240,20 @@ internal fun memberInitials(name: String): String = name.trim().split(Regex("\\s
 
 internal fun escapeHtml(value: String): String = value.replace("&", "&amp;").replace("<", "&lt;")
     .replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
+private const val POPULAR_SAMPLE = 100
+
+internal fun linkHashtags(text: String): String {
+    val html = StringBuilder()
+    var last = 0
+    Post.hashtagInText.findAll(text).forEach { match ->
+        html.append(escapeHtml(text.substring(last, match.range.first)))
+        val tag = Hashtag.from(match.groupValues[1]).value
+        html.append("<a class=\"hashtag\" href=\"/hashtags/${encode(tag)}\">${escapeHtml(match.value)}</a>")
+        last = match.range.last + 1
+    }
+    return html.append(escapeHtml(text.substring(last))).toString()
+}
+
 private fun encode(value: String) = URLEncoder.encode(value, UTF_8)
 
 private fun postGallery(post: PostSummary): String = if (post.imageCount == 0) "" else

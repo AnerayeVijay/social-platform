@@ -129,9 +129,9 @@ class Post(
         const val MAX_BODY_LENGTH = 2_000
         const val MAX_IMAGES = 4
 
-        private val hashtagInBody = Regex("(?<![\\p{L}\\p{M}\\p{N}_/&@#.:])#([\\p{L}\\p{M}\\p{N}_]{1,50})(?![\\p{L}\\p{M}\\p{N}_])")
+        val hashtagInText = Regex("(?<![\\p{L}\\p{M}\\p{N}_/&@#.:])#([\\p{L}\\p{M}\\p{N}_]{1,50})(?![\\p{L}\\p{M}\\p{N}_])")
 
-        fun extractHashtags(body: String): Set<Hashtag> = hashtagInBody
+        fun extractHashtags(body: String): Set<Hashtag> = hashtagInText
             .findAll(body).map { Hashtag.from(it.groupValues[1]) }.toSet()
 
         fun publish(authorId: UserId, body: String, now: Instant = Instant.now(), imageCount: Int = 0): Post {

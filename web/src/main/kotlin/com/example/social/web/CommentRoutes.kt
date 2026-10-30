@@ -14,7 +14,7 @@ internal fun commentCard(post: PostId, row: ThreadComment, session: Session?, ac
     val author = accounts?.byId(comment.authorId)
     val base = "/web/posts/${post.value}/comments/${comment.id.value}"
     return buildString {
-        append("<article class=\"card comment\" id=\"comment-${comment.id.value}\"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong><p class=\"post-body\" translate=\"no\">${escapeHtml(comment.body)}</p>${commentAttachment(post, comment)}<time datetime=\"${comment.createdAt}\">${comment.createdAt}</time>")
+        append("<article class=\"card comment\" id=\"comment-${comment.id.value}\"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong><p class=\"post-body\" translate=\"no\">${linkHashtags(comment.body)}</p>${commentAttachment(post, comment)}<time datetime=\"${comment.createdAt}\">${comment.createdAt}</time>")
         append("<p><span class=\"comment-like-count\">${row.likeCount}</span> <span>likes</span> · <span class=\"reply-count\">${row.replyCount}</span> <span>replies</span></p>")
         if (session != null) {
             val csrf = "<input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">"

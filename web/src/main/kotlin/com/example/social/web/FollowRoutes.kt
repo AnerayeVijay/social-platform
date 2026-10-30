@@ -15,7 +15,7 @@ internal fun trendsCard(queries: PostQueries): String {
     val tags = queries.trendingHashtags(5)
     if (tags.isEmpty()) return ""
     return "<section class=\"card trends\"><h2>What's happening</h2>" +
-        tags.joinToString("") { "<div class=\"trend\"><a href=\"/?tag=${escapeHtml(it.name)}\">#${escapeHtml(it.name)}</a><span>${it.posts} ${if (it.posts == 1L) "post" else "posts"}</span></div>" } +
+        tags.joinToString("") { "<div class=\"trend\"><a href=\"/hashtags/${URLEncoder.encode(it.name, UTF_8)}\">#${escapeHtml(it.name)}</a><span>${it.posts} ${if (it.posts == 1L) "post" else "posts"}</span></div>" } +
         "</section>"
 }
 
