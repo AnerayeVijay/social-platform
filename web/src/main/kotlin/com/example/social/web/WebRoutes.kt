@@ -168,6 +168,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
             }
             val content = buildString {
                 val tagFilter = tag?.let { "&amp;tag=${encode(it.value)}" }.orEmpty()
+                append("<h1>Home</h1><p>Your latest updates</p>")
                 append(feedTabs(scope, session != null, tagFilter))
                 if (session != null && follows != null) append(followNavigation(follows, session))
                 if (session == null) append("<section class=\"card\"><strong>Join the conversation</strong><p><a class=\"button\" href=\"/login\">Sign in</a> <a href=\"/register\">Create an account</a></p></section>")

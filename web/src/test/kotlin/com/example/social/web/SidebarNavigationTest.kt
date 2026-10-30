@@ -4,6 +4,13 @@ import org.jsoup.Jsoup
 import kotlin.test.*
 
 class SidebarNavigationTest {
+    @Test fun `the home feed has a Home heading with a short subtitle`() {
+        val f = CustomizationFixture()
+        val main = Jsoup.parse(f.get("/").bodyString()).selectFirst("main")!!
+        assertEquals("Home", main.selectFirst("h1")!!.text())
+        assertEquals("Your latest updates", main.selectFirst("h1 + p")!!.text())
+    }
+
     @Test fun `the current page is marked in the left navigation`() {
         val f = CustomizationFixture()
         val settings = Jsoup.parse(f.get("/").bodyString())
