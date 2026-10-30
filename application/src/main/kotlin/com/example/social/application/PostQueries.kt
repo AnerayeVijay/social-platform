@@ -17,7 +17,8 @@ data class PostSummary(
     val visibility: PostVisibility = PostVisibility.PUBLIC,
     val font: PostFont = PostFont.SANS,
     val size: PostSize = PostSize.NORMAL,
-    val imageCount: Int = 0
+    val imageCount: Int = 0,
+    val mediaTypes: List<String> = emptyList()
 )
 
 data class FeedPage(val posts: List<PostSummary>, val next: PostCursor?)

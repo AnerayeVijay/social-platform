@@ -17,6 +17,11 @@ interface PostRepository {
         update(id) { if (liked) it.like(user) else it.unlike(user) } != null
     fun appendComment(id: PostId, comment: Comment): Boolean =
         update(id) { it.copy(comments = it.comments + comment) } != null
+    fun appendCommentWithAttachment(id: PostId, comment: Comment, attachment: PostImage?): Boolean {
+        check(attachment == null) { "Comment attachments are not configured" }
+        return appendComment(id, comment)
+    }
+    fun commentAttachment(id: PostId, comment: CommentId, viewer: UserId?): PostImage? = null
     fun save(post: Post): Post
     fun saveWithImages(post: Post, images: List<PostImage>): Post = throw UnsupportedOperationException()
     fun image(id: PostId, position: Int, viewer: UserId?): PostImage? = null
@@ -30,6 +35,15 @@ interface PostRepository {
 class PostUpload(val body: String, val visibility: PostVisibility, val font: PostFont, val size: PostSize, val images: List<ByteArray>)
 
 class PostService(private val posts: PostRepository, private val images: MemberImageProcessor? = null, private val imageGate: ImageProcessingGate = ImageProcessingGate()) {
+    fun publishAttachments(author: UserId, body: String, attachments: List<AttachmentUpload>,
+        visibility: PostVisibility = PostVisibility.PUBLIC, font: PostFont = PostFont.SANS, size: PostSize = PostSize.NORMAL): Post {
+        require(attachments.size <= Post.MAX_IMAGES) { "Posts can include at most 4 attachments" }
+        val originals = attachments.map(AttachmentPolicy::validate)
+        val post = Post.publish(author, body, imageCount = originals.size)
+            .copy(visibility = visibility, font = font, size = size, mediaTypes = originals.map { it.mediaType })
+        return posts.saveWithImages(post, originals)
+    }
+
     fun publish(author: UserId, body: String, visibility: PostVisibility = PostVisibility.PUBLIC, font: PostFont = PostFont.SANS, size: PostSize = PostSize.NORMAL): Post =
         posts.save(Post.publish(author, body).copy(visibility = visibility, font = font, size = size))
 
@@ -44,6 +58,8 @@ class PostService(private val posts: PostRepository, private val images: MemberI
     }
 
     fun image(id: PostId, position: Int, viewer: UserId?): PostImage? = posts.image(id, position, viewer)
+
+    fun commentAttachment(id: PostId, comment: CommentId, viewer: UserId?): PostImage? = posts.commentAttachment(id, comment, viewer)
 
     fun get(id: PostId, viewer: UserId? = null): Post? = if (posts.readable(id, viewer)) posts.find(id) else null
     fun changeVisibility(id: PostId, owner: UserId, visibility: PostVisibility) {
@@ -74,6 +90,15 @@ class PostService(private val posts: PostRepository, private val images: MemberI
     fun addComment(id: PostId, author: UserId, body: String) {
         if (!posts.readable(id, author)) throw NoSuchElementException("Post not found")
         if (!posts.appendComment(id, Comment(authorId = author, body = body.trim()))) throw NoSuchElementException("Post not found")
+    }
+
+    fun addCommentAttachments(id: PostId, author: UserId, body: String, attachments: List<AttachmentUpload>): Comment {
+        if (!posts.readable(id, author)) throw NoSuchElementException("Post not found")
+        require(attachments.size <= 1) { "Comments can include at most 1 attachment" }
+        val original = attachments.singleOrNull()?.let(AttachmentPolicy::validate)
+        val comment = Comment(authorId = author, body = body.trim(), attachmentType = original?.mediaType)
+        if (!posts.appendCommentWithAttachment(id, comment, original)) throw NoSuchElementException("Post not found")
+        return comment
     }
 
     fun setLike(id: PostId, user: UserId, liked: Boolean) {

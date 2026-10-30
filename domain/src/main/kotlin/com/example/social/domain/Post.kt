@@ -47,10 +47,11 @@ data class Comment(
     val authorId: UserId,
     val body: String,
     val createdAt: Instant = Instant.now(),
-    val parentId: CommentId? = null
+    val parentId: CommentId? = null,
+    val attachmentType: String? = null
 ) {
     init {
-        require(body.isNotBlank()) { "Comment must not be empty" }
+        require(body.isNotBlank() || attachmentType != null) { "Comment must not be empty" }
         require(body.length <= 1_000) { "Comment must be at most 1000 characters" }
     }
 }
@@ -92,8 +93,11 @@ class Post(
     val visibility: PostVisibility = PostVisibility.PUBLIC,
     val font: PostFont = PostFont.SANS,
     val size: PostSize = PostSize.NORMAL,
-    val imageCount: Int = 0
+    val imageCount: Int = 0,
+    mediaTypes: List<String> = emptyList()
 ) {
+    /** Original attachment types in display order. imageCount also counts video and audio for compatibility. */
+    val mediaTypes: List<String> = java.util.Collections.unmodifiableList(ArrayList(mediaTypes))
     val hashtags: Set<Hashtag> = java.util.Collections.unmodifiableSet(LinkedHashSet(hashtags))
     val likes: Set<UserId> = java.util.Collections.unmodifiableSet(LinkedHashSet(likes))
     val comments: List<Comment> = java.util.Collections.unmodifiableList(ArrayList(comments))
@@ -102,15 +106,17 @@ class Post(
         id: PostId = this.id, authorId: UserId = this.authorId, body: String = this.body,
         hashtags: Set<Hashtag> = this.hashtags, createdAt: Instant = this.createdAt,
         likes: Set<UserId> = this.likes, comments: List<Comment> = this.comments, visibility: PostVisibility = this.visibility,
-        font: PostFont = this.font, size: PostSize = this.size, imageCount: Int = this.imageCount
-    ) = Post(id, authorId, body, hashtags, createdAt, likes, comments, visibility, font, size, imageCount)
+        font: PostFont = this.font, size: PostSize = this.size, imageCount: Int = this.imageCount,
+        mediaTypes: List<String> = this.mediaTypes
+    ) = Post(id, authorId, body, hashtags, createdAt, likes, comments, visibility, font, size, imageCount, mediaTypes)
 
     override fun equals(other: Any?): Boolean = other is Post && id == other.id && authorId == other.authorId &&
-        body == other.body && hashtags == other.hashtags && createdAt == other.createdAt && likes == other.likes && comments == other.comments && visibility == other.visibility && font == other.font && size == other.size && imageCount == other.imageCount
-    override fun hashCode(): Int = listOf(id, authorId, body, hashtags, createdAt, likes, comments, visibility, font, size, imageCount).hashCode()
+        body == other.body && hashtags == other.hashtags && createdAt == other.createdAt && likes == other.likes && comments == other.comments && visibility == other.visibility && font == other.font && size == other.size && imageCount == other.imageCount && mediaTypes == other.mediaTypes
+    override fun hashCode(): Int = listOf(id, authorId, body, hashtags, createdAt, likes, comments, visibility, font, size, imageCount, mediaTypes).hashCode()
 
     init {
         require(imageCount in 0..MAX_IMAGES) { "Post must have at most $MAX_IMAGES images" }
+        require(mediaTypes.isEmpty() || mediaTypes.size == imageCount) { "Attachment types must match attachment count" }
         require(body.isNotBlank() || imageCount > 0) { "Post body must not be empty" }
         require(body.length <= MAX_BODY_LENGTH) { "Post body must be at most $MAX_BODY_LENGTH characters" }
         require(hashtags == extractHashtags(body)) { "Hashtags must match the post body" }
