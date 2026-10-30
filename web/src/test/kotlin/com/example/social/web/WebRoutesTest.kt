@@ -139,7 +139,8 @@ class WebRoutesTest {
         assertEquals(1, composer.select(".audience-help").size)
         assertEquals("Share your thoughts ...", composer.selectFirst("textarea[name=body]")!!.attr("placeholder"))
         val tools = composer.selectFirst(".composer-tools")!!
-        assertNotNull(tools.selectFirst("button[data-attach=post-images]"))
+        assertEquals(0, composer.select("input[type=file]").size)
+        assertNull(tools.selectFirst("[data-attach]"))
         assertTrue(tools.select("button[disabled]").size >= 6)
         assertEquals("button", tools.selectFirst(".composer-close")!!.attr("type"))
         assertEquals("Publish post", tools.selectFirst("button[type=submit]")!!.text())

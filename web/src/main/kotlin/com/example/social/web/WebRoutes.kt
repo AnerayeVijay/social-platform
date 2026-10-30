@@ -318,7 +318,7 @@ private fun audienceSelector(id: String, selected: PostVisibility): String =
     } + "</select><p class=\"audience-help\">Members only posts are visible to your approved followers. Private posts are visible only to you.</p>"
 
 private fun composer(session: Session): String =
-    "<details class=\"create-post\"><summary class=\"post-prompt\">Share your thoughts ...</summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"Share your thoughts ...\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${mediaPicker("post-images", Post.MAX_IMAGES)}${composerTools()}</form></section></details><script>$mediaPickerScript</script>"
+    "<details class=\"create-post\"><summary class=\"post-prompt\">Share your thoughts ...</summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"Share your thoughts ...\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${composerTools()}</form></section></details>"
 
 private fun composerIcon(body: String) = "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\">$body</svg>"
 
@@ -330,14 +330,11 @@ private fun composerTools(): String {
         "Add poll" to composerIcon("""<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-5M12 17V8M16 17v-3"/>"""),
         "Add document" to composerIcon("""<path d="M6 3h8l4 4v14H6z"/><path d="M9 11h6M9 15h6"/>""")
     ).joinToString("") { (label, icon) -> "<button type=\"button\" class=\"tool-icon\" disabled aria-label=\"$label\" title=\"Coming soon\">$icon</button>" }
-    val image = composerIcon("""<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 9"/>""")
     val close = composerIcon("""<path d="M6 6l12 12M18 6L6 18"/>""")
     return "<div class=\"composer-tools\"><button type=\"button\" class=\"tool-pill\" disabled title=\"Coming soon\">Proofread</button>" +
-        "<button type=\"button\" class=\"tool-icon\" data-attach=\"post-images\" aria-label=\"Add image\" title=\"Add image\">$image</button>" +
         disabled +
         "<button type=\"button\" class=\"composer-close\" aria-label=\"Close\" onclick=\"this.closest('details').open=false\">$close</button>" +
-        "<button class=\"publish\" type=\"submit\">Publish post</button></div>" +
-        "<script>document.querySelectorAll('[data-attach]').forEach(function(b){b.addEventListener('click',function(){document.getElementById(b.dataset.attach).click()})})</script>"
+        "<button class=\"publish\" type=\"submit\">Publish post</button></div>"
 }
 
 private const val composerStyles = """
@@ -351,7 +348,6 @@ private const val composerStyles = """
 .tool-pill{min-height:34px;padding:.3rem .9rem;background:transparent;color:var(--ink);border:1px solid var(--ink);border-radius:999px;font-weight:600}
 .tool-pill:disabled{opacity:.6;cursor:not-allowed}
 .composer-tools .publish{margin-left:auto}
-.composer .media-picker>label{position:absolute;left:-9999px}
 """
 
 internal fun withAccountHeader(html: String, session: Session, path: String): String {
