@@ -139,10 +139,12 @@ class WebRoutesTest {
         assertEquals(1, composer.select(".audience-help").size)
         assertEquals("What's on your mind?", composer.selectFirst(".composer-head strong")!!.text())
         assertEquals("What's happening? Share your thoughts, ideas or something interesting...", composer.selectFirst("textarea[name=body]")!!.attr("placeholder"))
-        assertEquals(0, composer.select("input[type=file]").size)
+        assertEquals(1, composer.select("input[type=file]").size)
+        assertEquals("post-images", composer.selectFirst("input[type=file]")!!.id())
         val tools = composer.selectFirst(".composer-tools")!!
         assertEquals(listOf("Photo", "Video", "Emoji", "Hashtags", "Poll"), tools.select("button.tool").map { it.text() })
-        assertEquals(listOf("Hashtags"), tools.select("button.tool:not([disabled])").map { it.text() })
+        assertEquals(listOf("Photo", "Video", "Emoji", "Hashtags"), tools.select("button.tool:not([disabled])").map { it.text() })
+        assertTrue(composer.select(".emoji-palette button[data-insert]").isNotEmpty())
         assertEquals("button", composer.selectFirst(".composer-close")!!.attr("type"))
         assertEquals("Post", tools.selectFirst("button[type=submit]")!!.text())
     }

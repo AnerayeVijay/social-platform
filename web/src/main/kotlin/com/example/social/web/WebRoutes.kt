@@ -318,7 +318,7 @@ private fun audienceSelector(id: String, selected: PostVisibility): String =
     } + "</select><p class=\"audience-help\">Members only posts are visible to your approved followers. Private posts are visible only to you.</p>"
 
 private fun composer(session: Session, accounts: Accounts?): String =
-    "<details class=\"create-post\"><summary class=\"post-prompt\">Share your thoughts ...</summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">${composerHead(session, accounts)}<label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What's happening? Share your thoughts, ideas or something interesting...\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${composerTools()}</form></section></details>"
+    "<details class=\"create-post\"><summary class=\"post-prompt\">Share your thoughts ...</summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">${composerHead(session, accounts)}<label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What's happening? Share your thoughts, ideas or something interesting...\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${mediaPicker("post-images", Post.MAX_IMAGES)}${composerTools()}</form></section></details><script>$mediaPickerScript</script>"
 
 private fun composerHead(session: Session, accounts: Accounts?): String {
     val name = accounts?.byId(session.accountId)?.displayName ?: "Member"
@@ -330,16 +330,23 @@ private fun composerHead(session: Session, accounts: Accounts?): String {
 private fun composerIcon(body: String) = "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\">$body</svg>"
 
 private fun composerTools(): String {
+    val attach = " data-attach=\"post-images\""
     val tools = listOf(
-        composerTool("Photo", composerIcon("""<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 9"/>""")),
-        composerTool("Video", composerIcon("""<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>""")),
-        composerTool("Emoji", composerIcon("""<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4 4 0 0 0 7 0"/><circle cx="9" cy="10" r=".6"/><circle cx="15" cy="10" r=".6"/>""")),
+        composerTool("Photo", composerIcon("""<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 9"/>"""), enabled = true, attributes = attach),
+        composerTool("Video", composerIcon("""<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>"""), enabled = true, attributes = attach),
+        composerTool("Emoji", composerIcon("""<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4 4 0 0 0 7 0"/><circle cx="9" cy="10" r=".6"/><circle cx="15" cy="10" r=".6"/>"""), enabled = true, attributes = " data-toggle=\"emoji-palette\""),
         composerTool("Hashtags", composerIcon("""<path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/>"""), enabled = true, attributes = " data-insert=\"#\""),
         composerTool("Poll", composerIcon("""<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-5M12 17V8M16 17v-3"/>"""))
     ).joinToString("")
+    val palette = EMOJI.joinToString("") { "<button type=\"button\" data-insert=\"$it\">$it</button>" }
     return "<div class=\"composer-tools\">$tools<button class=\"publish\" type=\"submit\">Post</button></div>" +
-        "<script>document.querySelectorAll('[data-insert]').forEach(function(b){b.addEventListener('click',function(){var t=document.getElementById('body');t.focus();t.setRangeText(b.dataset.insert,t.selectionStart,t.selectionEnd,'end')})})</script>"
+        "<div class=\"emoji-palette\" id=\"emoji-palette\" hidden>$palette</div>" +
+        "<script>document.querySelectorAll('[data-attach]').forEach(function(b){b.addEventListener('click',function(){document.getElementById(b.dataset.attach).click()})});" +
+        "document.querySelectorAll('[data-toggle]').forEach(function(b){b.addEventListener('click',function(){var p=document.getElementById(b.dataset.toggle);p.hidden=!p.hidden})});" +
+        "document.querySelectorAll('[data-insert]').forEach(function(b){b.addEventListener('click',function(){var t=document.getElementById('body');t.focus();t.setRangeText(b.dataset.insert,t.selectionStart,t.selectionEnd,'end')})})</script>"
 }
+
+private val EMOJI = listOf("😀", "😂", "😍", "👍", "🎉", "🔥", "❤️", "🙏", "😮", "😢", "🤔", "👏")
 
 private fun composerTool(label: String, icon: String, enabled: Boolean = false, attributes: String = ""): String =
     "<button type=\"button\" class=\"tool\"$attributes${if (enabled) "" else " disabled title=\"Coming soon\""}>$icon<span>$label</span></button>"
@@ -354,6 +361,8 @@ private const val composerStyles = """
 .tool{display:inline-flex;align-items:center;gap:.35rem;min-height:36px;padding:.3rem .5rem;background:transparent;color:var(--ink);border:0;border-radius:8px;font-size:.85rem;font-weight:500}
 .tool svg{width:18px;height:18px}.tool:hover:not(:disabled){background:var(--soft)}.tool:disabled{opacity:.5;cursor:not-allowed}
 .composer-tools .publish{margin-left:auto;min-height:40px;padding:.5rem 1.4rem;background:#0f0f0f;color:#fff;border:0;border-radius:999px;font-weight:700}
+.composer .media-picker>label{position:absolute;left:-9999px}
+.emoji-palette{display:flex;flex-wrap:wrap;gap:.2rem;margin-top:.5rem}.emoji-palette[hidden]{display:none}.emoji-palette button{width:36px;min-height:36px;padding:0;font-size:1.2rem;background:transparent;border:0;border-radius:8px}.emoji-palette button:hover{background:var(--soft)}
 """
 
 internal fun withAccountHeader(html: String, session: Session, path: String): String {
