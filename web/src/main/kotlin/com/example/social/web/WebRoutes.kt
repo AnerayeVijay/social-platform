@@ -241,7 +241,7 @@ private fun composer(session: Session): String =
 
 internal fun withAccountHeader(html: String, session: Session): String {
     if (html.contains("class=\"account-controls\"")) return html
-    val navigation = "<span class=\"avatar account-avatar\" aria-hidden=\"true\" translate=\"no\">♙</span><a class=\"nav-link account-profile\" href=\"/profiles/${session.accountId.value}\">My profile</a>${composer(session)}"
+    val navigation = "<span class=\"avatar account-avatar\" aria-hidden=\"true\" translate=\"no\">♙</span><a class=\"nav-link\" href=\"/\">Home</a><a class=\"nav-link\" href=\"/members\">Find members</a><a class=\"nav-link\" href=\"/notifications\">Notifications</a><a class=\"nav-link\" href=\"/me/articles\">News &amp; Articles</a><a class=\"nav-link account-profile\" href=\"/profiles/${session.accountId.value}\">My profile</a><a class=\"nav-link\" href=\"/settings\">Settings</a>${composer(session)}"
     val signOut = "<form class=\"sidebar-signout\" action=\"/logout\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button type=\"submit\">Sign out</button></form>"
     return html.replaceFirst("</div></header>", "<nav class=\"account-controls\"></nav></div></header>")
         .replaceFirst("<nav class=\"account-navigation\" aria-label=\"Main navigation\">", "<nav class=\"account-navigation\" aria-label=\"Main navigation\">$navigation")
