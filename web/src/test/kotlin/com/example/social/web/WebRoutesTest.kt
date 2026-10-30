@@ -5,10 +5,24 @@ import com.example.social.http.*
 import com.example.social.application.*
 import com.example.social.domain.*
 import org.http4k.core.*
+import org.jsoup.Jsoup
 import java.time.Instant
 import kotlin.test.*
 
 class WebRoutesTest {
+    @Test fun `feed omits the intro banner and retains tabs composer and posts`() {
+        val fixture = CustomizationFixture()
+        for (path in listOf("/", "/?scope=mine")) {
+            val response = fixture.get(path)
+            assertEquals(Status.OK, response.status)
+            val main = Jsoup.parse(response.bodyString()).selectFirst("main")!!
+            assertTrue(main.select("section.intro").isEmpty(), path)
+            assertEquals(1, main.select(".feed-tabs").size)
+            assertEquals(1, main.select(".create-post").size)
+            assertEquals("A community post", main.selectFirst(".post-body")!!.text())
+        }
+    }
+
     @Test fun `only the profile owner sees linked Google emails instead of the link button`() {
         val f = FollowWebFixture()
         var emails: List<String?> = emptyList()

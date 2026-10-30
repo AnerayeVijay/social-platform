@@ -156,9 +156,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                     else queries.feed(20, cursor, viewer = session.accountId, tag = tag, author = session.accountId)
                 else -> throw IllegalArgumentException("Invalid feed scope")
             }
-            val title = tag?.let { "#${it.value}" } ?: "Your community, in conversation."
             val content = buildString {
-                append("<section class=\"intro\"><span class=\"eyebrow\">THE COMMUNITY FEED</span><h1>${escapeHtml(title)}</h1><p>Fresh ideas, small discoveries, and conversations worth having.</p></section>")
                 val tagFilter = tag?.let { "&amp;tag=${encode(it.value)}" }.orEmpty()
                 append(feedTabs(scope, session != null, tagFilter))
                 if (session != null && follows != null) append(followNavigation(follows, session))
