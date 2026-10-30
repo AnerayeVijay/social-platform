@@ -16,6 +16,7 @@ interface Follows {
     fun list(member: UserId, kind: FollowList, limit: Int, after: UserId?): List<UserId>
     fun pendingCount(member: UserId): Long
     fun count(member: UserId, kind: FollowList): Long
+    fun suggestions(member: UserId, limit: Int): List<UserId> = emptyList()
 }
 
 class FollowService(private val accounts: Accounts, private val follows: Follows, private val now: () -> Instant = Instant::now) {
@@ -64,6 +65,11 @@ class FollowService(private val accounts: Accounts, private val follows: Follows
         val ids = follows.list(actor, kind, limit + 1, after)
         val members = ids.take(limit).mapNotNull { id -> accounts.byId(id)?.let { FollowMember(id, it.displayName) } }
         return FollowPage(members, if (ids.size > limit) ids[limit - 1] else null)
+    }
+    fun suggestions(actor: UserId, limit: Int = 3): List<FollowMember> {
+        verified(actor)
+        require(limit in 1..100) { "limit must be between 1 and 100" }
+        return follows.suggestions(actor, limit).mapNotNull { id -> accounts.byId(id)?.let { FollowMember(id, it.displayName) } }
     }
     private fun verified(id: UserId) {
         require(accounts.byId(id)?.verified == true) { "A verified member account is required" }

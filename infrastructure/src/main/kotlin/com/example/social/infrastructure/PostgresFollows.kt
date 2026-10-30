@@ -64,6 +64,15 @@ class PostgresFollows(private val dataSource: DataSource) : Follows {
             }
         }
     }
+    override fun suggestions(member: UserId, limit: Int): List<UserId> =
+        dataSource.connection.use { c ->
+            c.prepareStatement("SELECT a.id FROM accounts a WHERE a.verified AND a.id <> ? AND NOT EXISTS (SELECT 1 FROM member_follows f WHERE f.follower_id = ? AND f.followed_id = a.id) ORDER BY a.id LIMIT ?").use { s ->
+                s.setObject(1, member.value)
+                s.setObject(2, member.value)
+                s.setInt(3, limit)
+                s.executeQuery().use { r -> buildList { while (r.next()) add(UserId(r.getObject(1, UUID::class.java))) } }
+            }
+        }
     override fun pendingCount(member: UserId): Long = count(member, FollowList.REQUESTS)
     override fun count(member: UserId, kind: FollowList): Long = dataSource.connection.use { c ->
         val owner = if (kind == FollowList.FOLLOWING) "follower_id" else "followed_id"
