@@ -12,7 +12,7 @@ import java.time.Instant
 
 fun webRoutes(queries: PostQueries, service: PostService? = null, access: AccessControl? = null, accounts: Accounts? = null, accountService: AccountService? = null, follows: FollowService? = null, googleIdentities: GoogleIdentities? = null, threads: CommentThreads? = null, articleFeeds: ArticleFeedService? = null, uploadClock: java.time.Clock = java.time.Clock.systemUTC()): RoutingHttpHandler = routes(
     articleFeedWebRoutes(articleFeeds, access),
-    commentWebRoutes(threads, access, accounts),
+    commentWebRoutes(threads, access, accounts, uploadClock),
     followWebRoutes(follows, access),
     contentRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, uploadClock)
 ).withFilter(Filter { next -> { request ->
@@ -76,6 +76,13 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
     "/web/posts/{id}/{action}" bind Method.POST to { request ->
         val session = access?.session(request)
         if (session == null || service == null) Response(Status.UNAUTHORIZED)
+        else if (request.path("action") == "comments" && isMultipart(request)) {
+            val id = runCatching { PostId.parse(request.path("id")!!) }.getOrNull()
+            if (id == null || service.get(id, session.accountId) == null) htmlPage("Not found", "<h1>Post not found</h1>", Status.NOT_FOUND)
+            else commentUpload(request, uploadClock, "Check your comment", "/web/posts/${id.value}") { body, attachments ->
+                service.addCommentAttachments(id, session.accountId, body, attachments)
+            }
+        }
         else try {
             val id = PostId.parse(request.path("id")!!)
             when (request.path("action")) {
@@ -105,12 +112,15 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
     "/media/posts/{id}/{position}" bind Method.GET to { request ->
         postMedia(request, service, access?.session(request)?.accountId)
     },
+    "/media/posts/{id}/comments/{comment}" bind Method.GET to { request ->
+        commentMedia(request, service, threads, access?.session(request)?.accountId)
+    },
     "/web/posts/{id}" bind Method.GET to { request ->
         try {
             val id = PostId.parse(request.path("id")!!)
             val viewer = access?.session(request)?.accountId
             val post = queries.post(id, viewer) ?: service?.get(id, viewer)?.let {
-                PostSummary(it.id, it.authorId, it.body, it.createdAt, it.hashtags, it.likes.size.toLong(), it.comments.size.toLong(), viewer in it.likes, it.visibility, it.font, it.size, it.imageCount)
+                PostSummary(it.id, it.authorId, it.body, it.createdAt, it.hashtags, it.likes.size.toLong(), it.comments.size.toLong(), viewer in it.likes, it.visibility, it.font, it.size, it.imageCount, it.mediaTypes)
             }
             if (post == null) htmlPage("Post not found", "<section class=\"card\"><h1>Post not found</h1><a href=\"/\">Back to feed</a></section>", Status.NOT_FOUND)
             else {
@@ -125,13 +135,13 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                     append("<a href=\"/\">&larr; Back to feed</a><h1>Conversation</h1>")
                     val session = access?.session(request)
                     append(postCard(post, session, accounts))
-                    if (session != null) append("<section class=\"card\"><form action=\"/web/posts/${post.id.value}/comments\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"comment\">Add a comment</label><textarea id=\"comment\" name=\"body\" rows=\"3\" maxlength=\"1000\" required></textarea><p><button class=\"button\" type=\"submit\">Post comment</button></p></form></section>")
+                    if (session != null) append("<section class=\"card\"><form action=\"/web/posts/${post.id.value}/comments\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"comment\">Add a comment</label><textarea id=\"comment\" name=\"body\" rows=\"3\" maxlength=\"1000\" required></textarea>${mediaPicker("comment-media", 1)}<p><button class=\"button\" type=\"submit\">Post comment</button></p></form></section>")
                     append("<h2>Comments</h2>")
                     if (comments.comments.isEmpty()) append("<section class=\"card empty\">No comments yet.</section>")
                     if (threadPage != null) threadPage.comments.forEach { append(commentCard(post.id, it, session, accounts)) }
                     else comments.comments.forEach { comment ->
                         val author = accounts?.byId(comment.authorId)
-                        append("<article class=\"card\"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong><p class=\"post-body\" translate=\"no\">${escapeHtml(comment.body)}</p><time datetime=\"${comment.createdAt}\">${comment.createdAt}</time></article>")
+                        append("<article class=\"card\"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong><p class=\"post-body\" translate=\"no\">${escapeHtml(comment.body)}</p>${commentAttachment(post.id, comment)}<time datetime=\"${comment.createdAt}\">${comment.createdAt}</time></article>")
                     }
                     comments.next?.let { append("<a class=\"button\" href=\"/web/posts/${post.id.value}?after=${encode("${it.createdAt}|${it.id.value}")}\">More comments &rarr;</a>") }
                     if (threads != null) append(commentThreadScript)
@@ -160,7 +170,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                 val tagFilter = tag?.let { "&amp;tag=${encode(it.value)}" }.orEmpty()
                 append(feedTabs(scope, session != null, tagFilter))
                 if (session != null && follows != null) append(followNavigation(follows, session))
-                if (session != null) append("<details class=\"create-post\"><summary class=\"button\"><span aria-hidden=\"true\">＋</span> <span>Create post</span></summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What would you like to share?\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${styleSelectors()}${composerImages()}<p><button class=\"button\" type=\"submit\">Publish post</button></p></form></section></details>")
+                if (session != null) append("<details class=\"create-post\"><summary class=\"button\"><span aria-hidden=\"true\">＋</span> <span>Create post</span></summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What would you like to share?\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${styleSelectors()}${mediaPicker("post-images", Post.MAX_IMAGES)}<p><button class=\"button\" type=\"submit\">Publish post</button></p></form></section></details>")
                 else append("<section class=\"card\"><strong>Join the conversation</strong><p><a class=\"button\" href=\"/login\">Sign in</a> <a href=\"/register\">Create an account</a></p></section>")
                 if (page.posts.isEmpty()) append("<section class=\"card empty\"><h2>No posts yet</h2><p>${when (scope) { "following" -> "Follow members and wait for approval to see their posts here. Your own posts also appear here."; "mine" -> "You have not published any posts yet."; else -> "This space is ready for its first conversation." }}</p><a href=\"/\">Back to all posts</a></section>")
                 page.posts.forEach { post -> append(postCard(post, session, accounts)) }
@@ -208,7 +218,7 @@ private fun encode(value: String) = URLEncoder.encode(value, UTF_8)
 
 private fun postGallery(post: PostSummary): String = if (post.imageCount == 0) "" else
     "<div class=\"post-gallery\" data-count=\"${post.imageCount}\">" + (0 until post.imageCount).joinToString("") {
-        "<a href=\"/media/posts/${post.id.value}/$it\"><img src=\"/media/posts/${post.id.value}/$it\" alt=\"Post image\" loading=\"lazy\"></a>"
+        mediaItem("/media/posts/${post.id.value}/$it", post.mediaTypes.getOrNull(it) ?: LEGACY_MEDIA_TYPE, "Post image")
     } + "</div>"
 private fun fontLabel(font: PostFont) = when (font) { PostFont.SANS -> "Sans-serif"; PostFont.SERIF -> "Serif"; PostFont.MONOSPACE -> "Monospace" }
 private fun sizeLabel(size: PostSize) = when (size) { PostSize.SMALL -> "Small"; PostSize.NORMAL -> "Normal"; PostSize.LARGE -> "Large" }
@@ -241,6 +251,6 @@ internal fun htmlPage(title: String, content: String, status: Status = Status.OK
         .header("X-Content-Type-Options", "nosniff")
         .body("""
             <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#176859"><title>${escapeHtml(title)} · Onely</title>
-            <style>$onelyStyles</style></head><body><a class="skip" href="#main">Skip to content</a><header class="topbar"><div class="topbar-inner"><a class="brand" href="/" aria-label="Onely"><span class="brand-symbol" aria-hidden="true">❋</span><span translate="no">Onely<span class="brand-dot">.</span></span></a><span class="brand-tagline">A place for shared ideas</span></div></header>
-            <div class="layout"><aside class="sidebar"><nav class="account-navigation" aria-label="Main navigation"></nav><p class="aside-note">Explore the latest posts and discover conversations through hashtags.</p><form class="search" action="/" method="get"><label class="skip" for="tag">Find a hashtag</label><input id="tag" name="tag" placeholder="Find a hashtag" required maxlength="50"><button type="submit">Find</button></form><div class="sidebar-card"><span class="sprout" aria-hidden="true">✳</span><strong>A place for shared ideas</strong><p>Fresh ideas, small discoveries, and conversations worth having.</p></div></aside><main id="main">$content</main></div><footer class="site-footer">Onely · Ideas bring us together.</footer><nav class="mobile-nav" aria-label="Mobile navigation"><a href="/"><span class="nav-icon" aria-hidden="true">⌂</span><span>Community feed</span></a><a href="#tag"><span class="nav-icon" aria-hidden="true">⌕</span><span>Find a hashtag</span></a><a href="/login" class="mobile-account"><span class="nav-icon" aria-hidden="true">♙</span><span>Sign in</span></a></nav></body></html>
+            <style>$onelyStyles$mediaStyles</style></head><body><script>$mediaErrorScript</script><a class="skip" href="#main">Skip to content</a><header class="topbar"><div class="topbar-inner"><a class="brand" href="/" aria-label="Onely"><span class="brand-symbol" aria-hidden="true">❋</span><span translate="no">Onely<span class="brand-dot">.</span></span></a><span class="brand-tagline">A place for shared ideas</span></div></header>
+            <div class="layout"><aside class="sidebar"><nav class="account-navigation" aria-label="Main navigation"></nav><p class="aside-note">Explore the latest posts and discover conversations through hashtags.</p><form class="search" action="/" method="get"><label class="skip" for="tag">Find a hashtag</label><input id="tag" name="tag" placeholder="Find a hashtag" required maxlength="50"><button type="submit">Find</button></form><div class="sidebar-card"><span class="sprout" aria-hidden="true">✳</span><strong>A place for shared ideas</strong><p>Fresh ideas, small discoveries, and conversations worth having.</p></div></aside><main id="main">$content</main></div><footer class="site-footer">Onely · Ideas bring us together.</footer><nav class="mobile-nav" aria-label="Mobile navigation"><a href="/"><span class="nav-icon" aria-hidden="true">⌂</span><span>Community feed</span></a><a href="#tag"><span class="nav-icon" aria-hidden="true">⌕</span><span>Find a hashtag</span></a><a href="/login" class="mobile-account"><span class="nav-icon" aria-hidden="true">♙</span><span>Sign in</span></a></nav>${if (content.contains("media-picker")) "<script>$mediaPickerScript</script>" else ""}</body></html>
         """.trimIndent())

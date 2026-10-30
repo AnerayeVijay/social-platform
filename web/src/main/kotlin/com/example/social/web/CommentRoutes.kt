@@ -14,19 +14,19 @@ internal fun commentCard(post: PostId, row: ThreadComment, session: Session?, ac
     val author = accounts?.byId(comment.authorId)
     val base = "/web/posts/${post.value}/comments/${comment.id.value}"
     return buildString {
-        append("<article class=\"card comment\" id=\"comment-${comment.id.value}\"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong><p class=\"post-body\" translate=\"no\">${escapeHtml(comment.body)}</p><time datetime=\"${comment.createdAt}\">${comment.createdAt}</time>")
+        append("<article class=\"card comment\" id=\"comment-${comment.id.value}\"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong><p class=\"post-body\" translate=\"no\">${escapeHtml(comment.body)}</p>${commentAttachment(post, comment)}<time datetime=\"${comment.createdAt}\">${comment.createdAt}</time>")
         append("<p><span class=\"comment-like-count\">${row.likeCount}</span> <span>likes</span> · <span class=\"reply-count\">${row.replyCount}</span> <span>replies</span></p>")
         if (session != null) {
             val csrf = "<input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">"
             append("<form action=\"$base/${if (row.likedByViewer) "unlike" else "likes"}\" method=\"post\">$csrf<button class=\"button\" type=\"submit\" aria-pressed=\"${row.likedByViewer}\">${if (row.likedByViewer) "Unlike" else "Like"}</button></form>")
-            append("<details class=\"reply-composer\"><summary>Reply</summary><form action=\"$base/replies\" method=\"post\">$csrf<label for=\"reply-${comment.id.value}\">Write a reply</label><textarea id=\"reply-${comment.id.value}\" name=\"body\" rows=\"2\" maxlength=\"1000\" required></textarea><button class=\"button\" type=\"submit\">Post reply</button></form></details>")
+            append("<details class=\"reply-composer\"><summary>Reply</summary><form action=\"$base/replies\" method=\"post\">$csrf<label for=\"reply-${comment.id.value}\">Write a reply</label><textarea id=\"reply-${comment.id.value}\" name=\"body\" rows=\"2\" maxlength=\"1000\" required></textarea>${mediaPicker("reply-media-${comment.id.value}", 1)}<button class=\"button\" type=\"submit\">Post reply</button></form></details>")
         }
         if (row.replyCount > 0) append("<a class=\"button view-replies\" href=\"$base/replies\" aria-expanded=\"false\">View replies</a><div class=\"replies\"></div>")
         append("</article>")
     }
 }
 
-internal fun commentWebRoutes(threads: CommentThreads?, access: AccessControl?, accounts: Accounts?): RoutingHttpHandler {
+internal fun commentWebRoutes(threads: CommentThreads?, access: AccessControl?, accounts: Accounts?, uploadClock: java.time.Clock = java.time.Clock.systemUTC()): RoutingHttpHandler {
     fun handle(action: (CommentThreads) -> Response): Response {
         if (threads == null) return Response(Status.NOT_FOUND)
         return try { action(threads) }
@@ -41,6 +41,12 @@ internal fun commentWebRoutes(threads: CommentThreads?, access: AccessControl?, 
         else {
             val id = post(request)
             val parent = comment(request)
+            if (request.path("action") == "replies" && isMultipart(request)) {
+                service.get(id, parent, session.accountId) // access is checked before the body is read
+                return@handle commentUpload(request, uploadClock, "Check your reply", "/web/posts/${id.value}/comments/${parent.value}/replies#comment-${parent.value}") { body, attachments ->
+                    service.replyAttachments(id, parent, session.accountId, body, attachments)
+                }
+            }
             when (request.path("action")) {
                 "replies" -> service.reply(id, parent, session.accountId, formFields(request)["body"].orEmpty())
                 "likes" -> service.like(id, parent, session.accountId, true)

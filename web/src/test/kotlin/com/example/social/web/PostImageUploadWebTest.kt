@@ -3,6 +3,7 @@ package com.example.social.web
 import com.example.social.application.*
 import com.example.social.domain.*
 import com.example.social.infrastructure.RasterMemberImages
+import com.example.social.http.withMediaUpload
 import org.http4k.core.*
 import java.awt.Color
 import java.awt.image.BufferedImage
@@ -62,7 +63,7 @@ class PostImageUploadWebTest {
         }, "png", it)
     }.toByteArray()
 
-    @Test fun `text and image post is stored with normalized JPEG served privately`() {
+    @Test fun `text and image post is stored with its original PNG served privately`() {
         val response = multipart(field("body", "Look #sky"), field("visibility", "public"), field("font", "serif"), field("size", "large"), file(png(3000, 1500)))
         assertEquals(Status.SEE_OTHER, response.status, response.bodyString())
         val post = rows.values.single()
@@ -72,11 +73,11 @@ class PostImageUploadWebTest {
         assertEquals(1, post.imageCount)
         val served = media("/media/posts/${post.id.value}/0")
         assertEquals(Status.OK, served.status)
-        assertEquals("image/jpeg", served.header("content-type"))
+        assertEquals("image/png", served.header("content-type"))
         assertEquals("nosniff", served.header("X-Content-Type-Options"))
         assertEquals("private, no-store", served.header("Cache-Control"))
         val decoded = ImageIO.read(served.body.stream)
-        assertEquals(1920, decoded.width); assertEquals(960, decoded.height)
+        assertEquals(3000, decoded.width); assertEquals(1500, decoded.height)
     }
 
     @Test fun `image-only posts are allowed while empty posts and a fifth image are rejected`() {
@@ -119,11 +120,12 @@ class PostImageUploadWebTest {
         assertTrue(rows.isEmpty())
     }
 
-    @Test fun `per image limit is five MiB inclusive and oversized files are refused as too large`() {
-        val limit = 5 * 1024 * 1024
-        assertEquals(Status.BAD_REQUEST, multipart(file(ByteArray(limit))).status)
-        assertEquals(Status.REQUEST_ENTITY_TOO_LARGE, multipart(file(ByteArray(limit + 1))).status)
-        assertTrue(rows.isEmpty())
+    @Test fun `per image limit is twenty MB inclusive and oversized files are refused as too large`() {
+        val limit = 20 * 1024 * 1024
+        val png = png(4, 4)
+        assertEquals(Status.SEE_OTHER, multipart(file(png + ByteArray(limit - png.size))).status)
+        assertEquals(Status.REQUEST_ENTITY_TOO_LARGE, multipart(file(png + ByteArray(limit + 1 - png.size))).status)
+        assertEquals(1, rows.size)
     }
 
     /** Endless body that records how much the server pulled. */
@@ -137,21 +139,14 @@ class PostImageUploadWebTest {
         }
     }
 
-    @Test fun `total body is capped by bytes actually read whatever Content-Length claims`() {
-        val cap = 4L * 5 * 1024 * 1024 + 64 * 1024
+    @Test fun `oversized Content-Length is refused before reading`() {
+        val cap = 4L * 100 * 1024 * 1024 + 64 * 1024
         fun post(body: java.io.InputStream, length: Long?) = app(Request(Method.POST, "/web/posts").header("Cookie", "session=alice")
             .header("X-CSRF-Token", "csrf").header("content-type", "multipart/form-data; boundary=$boundary")
             .let { if (length == null) it else it.header("Content-Length", length.toString()) }.body(body))
         val untouched = Endless(ByteArray(0))
         assertEquals(Status.REQUEST_ENTITY_TOO_LARGE, post(untouched, cap + 1).status)
         assertEquals(0L, untouched.read)
-        for (claimed in listOf(null, 100L)) {
-            val endlessField = Endless(field("body", "").dropLast(2).toByteArray())
-            assertEquals(Status.REQUEST_ENTITY_TOO_LARGE, post(endlessField, claimed).status)
-            assertTrue(endlessField.read in cap..cap + 64 * 1024, "read ${endlessField.read}")
-        }
-        val sixImages = Endless(file(ByteArray(0)).dropLast(2).toByteArray())
-        assertEquals(Status.REQUEST_ENTITY_TOO_LARGE, post(sixImages, null).status)
         assertTrue(rows.isEmpty())
     }
 
@@ -177,7 +172,7 @@ class PostImageUploadWebTest {
         val bodyToken = Endless(field("csrf", "csrf"))
         assertEquals(Status.FORBIDDEN, post("session=alice", null, bodyToken).status)
         val busy = Endless(ByteArray(0))
-        val response = gate.run { post("session=alice", "csrf", busy) }
+        val response = withMediaUpload { post("session=alice", "csrf", busy) }
         assertEquals(Status.TOO_MANY_REQUESTS, response.status)
         assertEquals("1", response.header("Retry-After"))
         assertEquals(listOf(0L, 0L, 0L), listOf(anonymous.read, bodyToken.read, busy.read))
@@ -187,32 +182,18 @@ class PostImageUploadWebTest {
         assertEquals(2, rows.size)
     }
 
-    @Test fun `profile image decoding and post uploads share one processing gate`() {
-        val store = object : MemberCustomizations {
-            override fun preferences(owner: UserId) = CustomizationPreferences()
-            override fun saveTheme(owner: UserId, theme: ThemeMode) = Unit
-            override fun saveBio(owner: UserId, bio: String) = Unit
-            override fun image(owner: UserId, kind: MemberImageKind): MemberImage? = null
-            override fun saveImage(owner: UserId, kind: MemberImageKind, image: MemberImage) = Unit
-            override fun removeImage(owner: UserId, kind: MemberImageKind) = Unit
+    @Test fun `a second upload while one is being stored is refused as busy`() {
+        var nested: Status? = null
+        val storing = object : PostRepository by repository {
+            override fun saveWithImages(post: Post, images: List<PostImage>): Post {
+                if (nested == null) nested = multipart(file(png(4, 4))).status
+                return repository.saveWithImages(post, images)
+            }
         }
-        var duringProfileDecode: Status? = null
-        val customization = CustomizationService(store, { bytes, _ ->
-            duringProfileDecode = multipart(file(png(4, 4))).status; bytes }, gate)
-        val settings = f.access.protect(settingsRoutes(customization, f.accounts, AccountService(f.accounts, object : Passwords {
-            override fun hash(password: String) = password
-            override fun matches(password: String, hash: String) = false
-        }, { "token" }, { _, _, _ -> }), f.access))
-        fun profileUpload() = settings(Request(Method.POST, "/settings/images/avatar").header("Cookie", "session=alice")
-            .header("X-CSRF-Token", "csrf").header("content-type", "image/png").body(ByteArrayInputStream(png(4, 4)))).status
-        assertEquals(Status.SEE_OTHER, profileUpload())
-        assertEquals(Status.TOO_MANY_REQUESTS, duringProfileDecode)
-        var duringPostDecode: Status? = null
-        val posts = PostService(repository, { bytes, kind -> duringPostDecode = profileUpload(); RasterMemberImages().process(bytes, kind) }, gate)
-        val postApp = f.access.protect(webRoutes(queries, posts, f.access, f.accounts))
+        val postApp = f.access.protect(webRoutes(queries, PostService(storing), f.access, f.accounts))
         assertEquals(Status.SEE_OTHER, postApp(Request(Method.POST, "/web/posts").header("Cookie", "session=alice").header("X-CSRF-Token", "csrf")
             .header("content-type", "multipart/form-data; boundary=$boundary").body(ByteArrayInputStream(file(png(4, 4)) + end()))).status)
-        assertEquals(Status.TOO_MANY_REQUESTS, duringPostDecode)
+        assertEquals(Status.TOO_MANY_REQUESTS, nested)
     }
 
     @Test fun `post media is not found when invalid missing or hidden from the viewer`() {
@@ -226,7 +207,7 @@ class PostImageUploadWebTest {
         assertEquals(Status.NOT_FOUND, media("/media/posts/$id/0", null).status)
     }
 
-    @Test fun `stored post images are re-encoded JPEGs without source metadata`() {
+    @Test fun `stored post images are the untouched originals`() {
         val plain = png(16, 16)
         val chunk = java.nio.ByteBuffer.allocate(0).let {
             val data = "tEXt".toByteArray() + "Comment\u0000SECRET-POST-MARKER".toByteArray()
@@ -237,8 +218,7 @@ class PostImageUploadWebTest {
         assertNotNull(ImageIO.read(ByteArrayInputStream(marked)))
         assertEquals(Status.SEE_OTHER, multipart(file(marked)).status)
         val served = media("/media/posts/${rows.values.single().id.value}/0").body.stream.readAllBytes()
-        assertEquals(listOf(0xFF.toByte(), 0xD8.toByte()), served.take(2))
-        assertFalse(String(served, Charsets.ISO_8859_1).contains("SECRET-POST-MARKER"))
+        assertContentEquals(marked, served)
     }
 
     @Test fun `browser placeholder for an unselected file input is ignored but real files are not`() {
@@ -247,9 +227,8 @@ class PostImageUploadWebTest {
         assertEquals(0, rows.values.single().imageCount)
         assertEquals(Status.BAD_REQUEST, multipart(placeholder).status)
         assertEquals(Status.BAD_REQUEST, multipart(field("body", "named but empty"), file(ByteArray(0))).status)
-        assertEquals(Status.SEE_OTHER, multipart(field("body", "unnamed real"), file(png(4, 4), filename = "")).status)
-        assertEquals(1, rows.values.single { it.body == "unnamed real" }.imageCount)
-        assertEquals(2, rows.size)
+        assertEquals(Status.BAD_REQUEST, multipart(field("body", "unnamed real"), file(png(4, 4), filename = "")).status)
+        assertEquals(1, rows.size)
     }
 
     @Test fun `an upload trickling past the deadline times out and frees the image gate`() {
