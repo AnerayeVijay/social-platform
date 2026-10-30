@@ -13,7 +13,7 @@ class AccessControl(private val sessions: Sessions, private val membersOnly: Boo
         return sessions.find(tokenDigest(token), now())
     }
     fun protect(next: HttpHandler): HttpHandler = { request ->
-        val write = request.method !in setOf(Method.GET, Method.HEAD, Method.OPTIONS)
+        val write = request.method !in setOf(Method.GET, Method.HEAD, Method.OPTIONS) && request.uri.path !in READ_ONLY_POST_PATHS
         val session = session(request)
         when {
             (write || membersOnly) && session == null ->
@@ -26,6 +26,8 @@ class AccessControl(private val sessions: Sessions, private val membersOnly: Boo
     }
     private fun bearer(request: Request) = request.header("Authorization")?.takeIf { it.startsWith("Bearer ") }?.removePrefix("Bearer ")?.takeIf { it.isNotBlank() }
 }
+
+private val READ_ONLY_POST_PATHS = setOf("/api/hashtags/search")
 
 fun cookie(request: Request, name: String): String? = request.header("Cookie")?.split(';')
     ?.map { it.trim().split('=', limit = 2) }?.firstOrNull { it.size == 2 && it[0] == name }?.get(1)
