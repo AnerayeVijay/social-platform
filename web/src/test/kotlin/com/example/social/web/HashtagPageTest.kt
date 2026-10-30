@@ -46,6 +46,23 @@ class HashtagPageTest {
         assertEquals("India wins! #Cricket #TeamIndia", page.select("article.post .post-body").first()!!.text())
     }
 
+    @Test fun `for you shows tagged posts from followed members only and asks anonymous readers to sign in`() {
+        val followed = UserId.new()
+        val mine = PostSummary(PostId.new(), followed, "Followed #Cricket", Instant.now(), setOf(Hashtag("cricket")), 0, 0, false)
+        val followingQueries = object : PostQueries by queries {
+            override fun followingFeed(viewer: UserId, limit: Int, before: PostCursor?, tag: Hashtag?, author: UserId?) =
+                FeedPage(listOf(mine).filter { tag == null || tag in it.hashtags }, null)
+        }
+        val f = FollowWebFixture()
+        val app = f.access.protect(webRoutes(followingQueries, PostService(EmptyPosts()), f.access, f.accounts))
+        val signedIn = Jsoup.parse(app(Request(Method.GET, "/hashtags/cricket?view=foryou").header("Cookie", "session=alice")).bodyString())
+        assertEquals("Followed #Cricket", signedIn.select("article.post .post-body").single().text())
+        assertNotNull(signedIn.selectFirst("a[href='/hashtags/cricket?view=foryou'][aria-current=page]"))
+        val anonymous = Jsoup.parse(app(Request(Method.GET, "/hashtags/cricket?view=foryou")).bodyString())
+        assertEquals(0, anonymous.select("article.post").size)
+        assertTrue(anonymous.text().contains("Sign in"))
+    }
+
     @Test fun `invalid hashtag names are rejected`() {
         assertEquals(Status.BAD_REQUEST, app()(Request(Method.GET, "/hashtags/bad-tag")).status)
     }

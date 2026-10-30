@@ -159,18 +159,32 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
             val tag = Hashtag.from(request.path("name")!!)
             val session = access?.session(request)
             val viewer = session?.accountId
-            val popular = request.query("view") == "popular"
-            val page = if (popular) queries.feed(POPULAR_SAMPLE, null, viewer, tag)
-                else queries.feed(20, request.query("before")?.let(::decodePostCursor), viewer, tag)
-            val posts = if (popular) page.posts.sortedByDescending { it.likeCount + it.commentCount }.take(20) else page.posts
+            val view = request.query("view") ?: "latest"
+            val page = when (view) {
+                "latest" -> queries.feed(20, request.query("before")?.let(::decodePostCursor), viewer, tag)
+                "popular" -> queries.feed(POPULAR_SAMPLE, null, viewer, tag)
+                "foryou" -> if (viewer == null) FeedPage(emptyList(), null)
+                    else queries.followingFeed(viewer, 20, request.query("before")?.let(::decodePostCursor), tag)
+                else -> throw IllegalArgumentException("Invalid hashtag view")
+            }
+            val posts = if (view == "popular") page.posts.sortedByDescending { it.likeCount + it.commentCount }.take(20) else page.posts
             val count = queries.hashtagPostCount(tag, viewer)
             val href = "/hashtags/${encode(tag.value)}"
             val content = buildString {
                 append("<h1>#${escapeHtml(tag.value)}</h1><p>$count ${if (count == 1L) "post" else "posts"}</p>")
-                append("<nav class=\"feed-tabs\" aria-label=\"Hashtag feed tabs\"><a class=\"button\" href=\"$href\"${if (!popular) " aria-current=\"page\"" else ""}>Latest</a> <a class=\"button\" href=\"$href?view=popular\"${if (popular) " aria-current=\"page\"" else ""}>Popular</a></nav>")
-                if (posts.isEmpty()) append("<section class=\"card empty\"><h2>No posts yet</h2><p>Posts with #${escapeHtml(tag.value)} will appear here.</p><a href=\"/\">Back to all posts</a></section>")
+                append("<nav class=\"feed-tabs\" aria-label=\"Hashtag feed tabs\">")
+                append(listOf("latest" to "Latest", "popular" to "Popular", "foryou" to "For you").joinToString(" ") { (value, label) ->
+                    val target = if (value == "latest") href else "$href?view=$value"
+                    "<a class=\"button\" href=\"$target\"${if (value == view) " aria-current=\"page\"" else ""}>$label</a>"
+                })
+                append("</nav>")
+                if (view == "foryou" && viewer == null) append("<section class=\"card\"><strong>Sign in to see posts from members you follow.</strong><p><a class=\"button\" href=\"/login\">Sign in</a></p></section>")
+                if (posts.isEmpty() && !(view == "foryou" && viewer == null)) append("<section class=\"card empty\"><h2>No posts yet</h2><p>Posts with #${escapeHtml(tag.value)} will appear here.</p><a href=\"/\">Back to all posts</a></section>")
                 posts.forEach { append(postCard(it, session, accounts)) }
-                if (!popular) page.next?.let { append("<nav class=\"pagination\" aria-label=\"Hashtag pagination\"><a class=\"button\" href=\"$href?before=${encode(encodePostCursor(it))}\">Older posts &rarr;</a></nav>") }
+                if (view == "latest" || view == "foryou") page.next?.let {
+                    val scope = if (view == "foryou") "view=foryou&amp;" else ""
+                    append("<nav class=\"pagination\" aria-label=\"Hashtag pagination\"><a class=\"button\" href=\"$href?$scope" + "before=${encode(encodePostCursor(it))}\">Older posts &rarr;</a></nav>")
+                }
             }
             htmlPage("#${tag.value}", content)
         } catch (_: IllegalArgumentException) {
