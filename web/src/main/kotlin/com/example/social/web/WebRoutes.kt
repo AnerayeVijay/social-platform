@@ -90,9 +90,11 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                 "unlike" -> service.setLike(id, session.accountId, false)
                 "comments" -> service.addComment(id, session.accountId, formFields(request)["body"].orEmpty())
                 "visibility" -> service.changeVisibility(id, session.accountId, PostVisibility.parse(formFields(request)["visibility"].orEmpty()))
+                "edit" -> service.edit(id, session.accountId, formFields(request)["body"].orEmpty())
+                "delete" -> service.delete(id, session.accountId)
                 else -> throw NoSuchElementException()
             }
-            Response(Status.SEE_OTHER).header("Location", "/web/posts/${id.value}")
+            Response(Status.SEE_OTHER).header("Location", if (request.path("action") == "delete") "/" else "/web/posts/${id.value}")
         } catch (_: NoSuchElementException) { htmlPage("Not found", "<h1>Post not found</h1>", Status.NOT_FOUND) }
         catch (error: IllegalArgumentException) { htmlPage("Invalid input", "<h1>Check your input</h1><p>${escapeHtml(error.message.orEmpty())}</p><a href=\"/\">Back to feed</a>", Status.BAD_REQUEST) }
     },
@@ -202,6 +204,7 @@ private fun postCard(post: PostSummary, session: Session? = null, accounts: Acco
       ${postGallery(post)}
       <p class="post-audience">${audienceLabel(post.visibility)}</p>
       ${if (session?.accountId == post.authorId) "<details class=\"edit-audience\"><summary>Change audience</summary><form action=\"/web/posts/${post.id.value}/visibility\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">${audienceSelector("audience-${post.id.value}", post.visibility)}<button class=\"button\" type=\"submit\">Save audience</button></form></details>" else ""}
+      ${if (session?.accountId == post.authorId) "<details class=\"edit-post\"><summary>Edit post</summary><form action=\"/web/posts/${post.id.value}/edit\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"edit-body-${post.id.value}\">Post text</label><textarea id=\"edit-body-${post.id.value}\" name=\"body\" rows=\"3\" maxlength=\"2000\" required>${escapeHtml(post.body)}</textarea><p><button class=\"button\" type=\"submit\">Save changes</button></p></form></details><form class=\"delete-post\" action=\"/web/posts/${post.id.value}/delete\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button class=\"button\" type=\"submit\">Delete post</button></form>" else ""}
       <div class="tags">${post.hashtags.sortedBy { it.value }.joinToString(" ") { "<a href=\"/?tag=${encode(it.value)}\">#${escapeHtml(it.value)}</a>" }}</div>
       <footer class="post-footer"><span>${post.likeCount} likes</span><a href="/web/posts/${post.id.value}">${post.commentCount} comments</a><a href="/web/posts/${post.id.value}" class="read-post">Read post &rarr;</a></footer>
       ${session?.let { "<form action=\"/web/posts/${post.id.value}/${if (post.likedByViewer) "unlike" else "likes"}\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(it.csrf)}\"><button class=\"button\" type=\"submit\" aria-pressed=\"${post.likedByViewer}\">${if (post.likedByViewer) "Unlike" else "Like"}</button></form>" } ?: ""}

@@ -48,4 +48,43 @@ class PostAudienceWebTest {
         assertEquals(Status.BAD_REQUEST, submit("$path/visibility", "visibility=invalid").status)
         assertEquals(Status.BAD_REQUEST, submit("/web/posts", "body=Invalid&visibility=invalid").status)
     }
+
+    @Test fun `owner edits and deletes a post from the web while others cannot`() {
+        val f = FollowWebFixture()
+        val rows = mutableMapOf<PostId, Post>()
+        val repository = object : PostRepository {
+            override fun save(post: Post) = post.also { rows[it.id] = it }
+            override fun find(id: PostId) = rows[id]
+            override fun page(limit: Int, before: Instant?) = rows.values.take(limit)
+            override fun findByHashtag(tag: Hashtag, limit: Int) = emptyList<Post>()
+            override fun update(id: PostId, change: (Post) -> Post) = rows[id]?.let(change)?.also { rows[id] = it }
+            override fun delete(id: PostId, owner: UserId) = rows[id]?.takeIf { it.authorId == owner }?.let { rows.remove(id) } != null
+        }
+        val queries = object : PostQueries {
+            override fun feed(limit: Int, before: PostCursor?, viewer: UserId?, tag: Hashtag?, author: UserId?) = FeedPage(emptyList(), null)
+            override fun comments(post: PostId, limit: Int, after: CommentCursor?) = CommentPage(emptyList(), null)
+        }
+        val app = f.access.protect(webRoutes(queries, PostService(repository), f.access, f.accounts))
+        fun get(path: String, who: String = "alice") = app(Request(Method.GET, path).header("Cookie", "session=$who"))
+        fun submit(path: String, body: String, who: String = "alice") = app(Request(Method.POST, path).header("Cookie", "session=$who")
+            .header("content-type", "application/x-www-form-urlencoded").body("csrf=csrf&$body"))
+        assertEquals(Status.SEE_OTHER, submit("/web/posts", "body=Old+%23draft").status)
+        val post = rows.values.single()
+        val path = "/web/posts/${post.id.value}"
+        val own = Jsoup.parse(get(path).bodyString())
+        assertEquals("Old #draft", own.selectFirst("form[action='$path/edit'] textarea[name=body]")!!.text())
+        assertNotNull(own.selectFirst("form[action='$path/delete']"))
+        val others = Jsoup.parse(get(path, "bob").bodyString())
+        assertNull(others.selectFirst("form[action='$path/edit']"))
+        assertNull(others.selectFirst("form[action='$path/delete']"))
+        assertEquals(Status.NOT_FOUND, submit("$path/edit", "body=Hijack", "bob").status)
+        assertEquals(Status.SEE_OTHER, submit("$path/edit", "body=New+%23fresh").status)
+        assertEquals(setOf(Hashtag("fresh")), rows.getValue(post.id).hashtags)
+        assertEquals(Status.BAD_REQUEST, submit("$path/edit", "body=+").status)
+        assertEquals(Status.NOT_FOUND, submit("$path/delete", "", "bob").status)
+        val deleted = submit("$path/delete", "")
+        assertEquals(Status.SEE_OTHER, deleted.status)
+        assertEquals("/", deleted.header("Location"))
+        assertTrue(rows.isEmpty())
+    }
 }
