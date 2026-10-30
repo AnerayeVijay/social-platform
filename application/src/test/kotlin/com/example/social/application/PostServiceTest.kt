@@ -57,4 +57,26 @@ class PostServiceTest {
         assertEquals("image/gif", service.get(post.id)!!.comments.single().attachmentType)
         kotlin.test.assertContentEquals(gif, posts.commentAttachments.getValue(comment.id).bytes)
     }
+
+    @Test fun `rejects a fifth post attachment without saving`() {
+        val posts = InMemoryPosts()
+        val upload = AttachmentUpload("invalid.gif", byteArrayOf(1))
+        assertFailsWith<IllegalArgumentException> {
+            PostService(posts).publishAttachments(UserId.new(), "Hello", List(5) { upload })
+        }
+        assertEquals(0, posts.attachments.size)
+    }
+
+    @Test fun `comments reject multiple attachments and empty submissions`() {
+        val posts = InMemoryPosts()
+        val service = PostService(posts)
+        val author = UserId.new()
+        val post = service.publish(author, "Hello")
+        val gif = java.util.Base64.getDecoder().decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
+        assertFailsWith<IllegalArgumentException> {
+            service.addCommentAttachments(post.id, author, "", List(2) { AttachmentUpload("reply.gif", gif) })
+        }
+        assertFailsWith<IllegalArgumentException> { service.addCommentAttachments(post.id, author, " ", emptyList()) }
+        assertEquals(0, service.get(post.id)!!.comments.size)
+    }
 }

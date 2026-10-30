@@ -36,4 +36,19 @@ class CommentAttachmentsTest {
         assertEquals("image/gif", reply.attachmentType)
         assertContentEquals(gif, repository.media.getValue(reply.id).bytes)
     }
+
+    @Test fun `replies reject multiple attachments and empty submissions`() {
+        val repository = Threads()
+        val author = UserId.new()
+        val parent = Comment(authorId = author, body = "Parent")
+        repository.comments[parent.id] = parent
+        val service = CommentThreads(repository)
+        val post = PostId.new()
+        val gif = java.util.Base64.getDecoder().decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
+        assertFailsWith<IllegalArgumentException> {
+            service.replyAttachments(post, parent.id, author, "", List(2) { AttachmentUpload("reply.gif", gif) })
+        }
+        assertFailsWith<IllegalArgumentException> { service.replyAttachments(post, parent.id, author, " ", emptyList()) }
+        assertEquals(listOf(parent.id), repository.comments.keys.toList())
+    }
 }
