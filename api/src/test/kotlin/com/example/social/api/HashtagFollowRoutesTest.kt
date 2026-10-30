@@ -18,14 +18,23 @@ class HashtagFollowRoutesTest {
         override fun deleteForAccount(id: UserId) = Unit
     }
     private val access = AccessControl(sessions, false)
+    private var feedViewer: UserId? = null
     private val queries = object : PostQueries {
         override fun feed(limit: Int, before: PostCursor?, viewer: UserId?, tag: Hashtag?, author: UserId?) = FeedPage(emptyList(), null)
         override fun comments(post: PostId, limit: Int, after: CommentCursor?) = CommentPage(emptyList(), null)
         override fun searchHashtags(query: String, limit: Int, offset: Int, viewer: UserId?) = emptyList<HashtagCount>()
         override fun hashtagPostCount(tag: Hashtag, viewer: UserId?) = 0L
         override fun trending(limit: Int, window: TrendWindow, now: Instant) = emptyList<TrendingHashtag>()
+        override fun followedHashtagFeed(viewer: UserId, limit: Int, before: PostCursor?): FeedPage {
+            feedViewer = viewer
+            return FeedPage(emptyList(), null)
+        }
     }
-    private val app = access.protect(routes(hashtagFollowRoutes(HashtagFollowService(MemoryHashtagFollows()), access), hashtagRoutes(queries, access)))
+    private val app = access.protect(routes(
+        hashtagFollowRoutes(HashtagFollowService(MemoryHashtagFollows()), access),
+        followedHashtagFeedRoutes(queries, access),
+        hashtagRoutes(queries, access)
+    ))
     private fun call(method: Method, path: String, token: String? = "alice") =
         app(Request(method, path).let { request -> token?.let { request.header("Authorization", "Bearer $it") } ?: request })
 
@@ -45,6 +54,13 @@ class HashtagFollowRoutesTest {
     @Test fun `invalid hashtags are rejected`() {
         assertEquals(Status.BAD_REQUEST, call(Method.POST, "/api/hashtags/bad-tag/follow").status)
         assertEquals(Status.BAD_REQUEST, call(Method.DELETE, "/api/hashtags/bad-tag/follow").status)
+    }
+
+    @Test fun `followed hashtag feed requires sign-in and is scoped to the viewer`() {
+        assertEquals(Status.UNAUTHORIZED, call(Method.GET, "/api/feed/hashtags", token = null).status)
+        assertEquals(Status.OK, call(Method.GET, "/api/feed/hashtags").status)
+        assertEquals(alice, feedViewer)
+        assertEquals(Status.BAD_REQUEST, call(Method.GET, "/api/feed/hashtags?limit=0").status)
     }
 }
 

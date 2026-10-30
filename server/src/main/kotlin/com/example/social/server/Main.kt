@@ -5,6 +5,7 @@ import com.example.social.api.mobileReadRoutes
 import com.example.social.api.followRoutes
 import com.example.social.api.hashtagRoutes
 import com.example.social.api.hashtagFollowRoutes
+import com.example.social.api.followedHashtagFeedRoutes
 import com.example.social.api.commentRoutes
 import com.example.social.api.articleFeedRoutes
 import com.example.social.api.routes as postRoutes
@@ -44,7 +45,7 @@ fun main() {
     val customization = CustomizationService(PostgresMemberCustomizations(dataSource), rasterImages, imageGate)
     val notifications = Notifications(PostgresNotifications(dataSource))
     val content = routes(notificationWebRoutes(notifications, access), settingsRoutes(customization, accounts, accountService, access), articleFeedRoutes(articleFeeds, access), commentRoutes(threads, access), webRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, articleFeeds),
-        mobileReadRoutes(queries, accounts, access, follows), followRoutes(follows, access), postRoutes(service, access), hashtagFollowRoutes(hashtagFollows, access), hashtagRoutes(queries, access))
+        mobileReadRoutes(queries, accounts, access, follows), followRoutes(follows, access), postRoutes(service, access), hashtagFollowRoutes(hashtagFollows, access), followedHashtagFeedRoutes(queries, access), hashtagRoutes(queries, access))
     val publicAccounts = AuthRateLimit().protect(routes(accountRoutes(accountService, accounts, sessions, access, secureCookies), authenticationRoutes(accountService, sessions, access)))
     val google = System.getenv("GOOGLE_CLIENT_ID")?.let {
         googleRoutes(GoogleOidcProvider(it, requireNotNull(System.getenv("GOOGLE_CLIENT_SECRET")) { "GOOGLE_CLIENT_SECRET is required" },
