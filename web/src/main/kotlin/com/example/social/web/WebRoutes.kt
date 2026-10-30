@@ -229,9 +229,11 @@ private fun audienceSelector(id: String, selected: PostVisibility): String =
 
 internal fun withAccountHeader(html: String, session: Session): String {
     if (html.contains("class=\"account-controls\"")) return html
-    val navigation = "<span class=\"avatar account-avatar\" aria-hidden=\"true\" translate=\"no\">♙</span><a class=\"nav-link account-profile\" href=\"/profiles/${session.accountId.value}\">My profile</a><form action=\"/logout\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button type=\"submit\">Sign out</button></form>"
+    val navigation = "<span class=\"avatar account-avatar\" aria-hidden=\"true\" translate=\"no\">♙</span><a class=\"nav-link account-profile\" href=\"/profiles/${session.accountId.value}\">My profile</a>"
+    val signOut = "<form class=\"sidebar-signout\" action=\"/logout\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button type=\"submit\">Sign out</button></form>"
     return html.replaceFirst("</div></header>", "<nav class=\"account-controls\"></nav></div></header>")
         .replaceFirst("<nav class=\"account-navigation\" aria-label=\"Main navigation\">", "<nav class=\"account-navigation\" aria-label=\"Main navigation\">$navigation")
+        .replaceFirst("</aside>", "$signOut</aside>")
 }
 
 internal fun htmlPage(title: String, content: String, status: Status = Status.OK): Response =

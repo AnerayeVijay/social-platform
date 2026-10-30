@@ -24,15 +24,18 @@ class AccountNavigationTest {
         assertTrue(fallback.select(".sidebar .avatar img").isEmpty())
     }
 
-    @Test fun `account actions appear below the avatar in the sidebar instead of the header`() {
+    @Test fun `profile follows the avatar and sign out is last after all other sidebar content`() {
         val f = CustomizationFixture(notificationStore = MemoryNotificationStore())
         val page = Jsoup.parse(f.get("/").bodyString())
         val navigation = assertNotNull(page.selectFirst(".sidebar nav[aria-label='Main navigation']"))
         assertEquals("R", assertNotNull(navigation.selectFirst(".avatar")).text())
-        assertEquals(listOf("span", "a", "form"), navigation.children().map { it.tagName() })
+        assertEquals(listOf("span", "a"), navigation.children().map { it.tagName() })
         assertEquals("/profiles/${f.owner.id.value}", navigation.selectFirst("a.account-profile")!!.attr("href"))
         assertEquals("My profile", navigation.selectFirst("a.account-profile")!!.text())
-        val logout = assertNotNull(navigation.selectFirst("form[action=/logout]"))
+        val sidebar = assertNotNull(page.selectFirst(".sidebar"))
+        val logout = assertNotNull(sidebar.selectFirst("form[action=/logout]"))
+        assertEquals(logout, sidebar.children().last())
+        assertTrue(assertNotNull(logout.previousElementSibling()).hasClass("sidebar-card"))
         assertEquals("post", logout.attr("method"))
         assertEquals("csrf", logout.selectFirst("input[name=csrf]")!!.attr("value"))
         assertEquals("Sign out", logout.selectFirst("button")!!.text())
