@@ -47,12 +47,18 @@ class PostgresCommentThreads(private val dataSource: DataSource) : CommentThread
     }
 
     override fun append(post: PostId, comment: Comment): Boolean = dataSource.connection.use { c ->
-        c.prepareStatement("INSERT INTO comments(id,post_id,author_id,body,created_at,parent_id) SELECT ?,c.post_id,?,?,?,c.id FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.post_id=? AND c.id=? AND ${postVisibilitySql()}").use {
-            it.setObject(1, comment.id.value); it.setObject(2, comment.authorId.value); it.setString(3, comment.body)
-            it.setTimestamp(4, Timestamp.from(comment.createdAt)); it.setObject(5, post.value); it.setObject(6, comment.parentId?.value)
-            it.setObject(7, comment.authorId.value)
-            it.executeUpdate() == 1
-        }
+        c.autoCommit = false
+        try {
+            val inserted = c.prepareStatement("INSERT INTO comments(id,post_id,author_id,body,created_at,parent_id) SELECT ?,c.post_id,?,?,?,c.id FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.post_id=? AND c.id=? AND ${postVisibilitySql()}").use {
+                it.setObject(1, comment.id.value); it.setObject(2, comment.authorId.value); it.setString(3, comment.body)
+                it.setTimestamp(4, Timestamp.from(comment.createdAt)); it.setObject(5, post.value); it.setObject(6, comment.parentId?.value)
+                it.setObject(7, comment.authorId.value)
+                it.executeUpdate() == 1
+            }
+            if (inserted) NotificationWriter.addPostComment(c, comment.id)
+            c.commit()
+            inserted
+        } catch (e: Exception) { c.rollback(); throw e }
     }
 
     override fun like(post: PostId, id: CommentId, user: UserId, liked: Boolean): Boolean = dataSource.connection.use { c ->

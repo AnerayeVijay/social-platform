@@ -4,6 +4,7 @@ dependencies {
     implementation(project(":domain"))
     implementation(project(":application"))
     implementation(project(":infrastructure"))
+    implementation(project(":notifications"))
     implementation(project(":http-common"))
     implementation(project(":api"))
     implementation(project(":web"))

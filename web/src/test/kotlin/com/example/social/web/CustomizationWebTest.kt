@@ -99,7 +99,7 @@ private fun png(): ByteArray {
     return java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(image, "png", it) }.toByteArray()
 }
 
-internal class CustomizationFixture(private val postCount: Int = 1) {
+internal class CustomizationFixture(private val postCount: Int = 1, notificationStore: com.example.social.notifications.NotificationStore? = null) {
     val owner = Account(UserId.new(), "reader@example.com", "Reader", null, true)
     val other = Account(UserId.new(), "other@example.com", "Other", null, true)
     private val members = mutableMapOf(owner.id to owner, other.id to other)
@@ -142,8 +142,11 @@ internal class CustomizationFixture(private val postCount: Int = 1) {
         override fun feed(limit: Int, before: PostCursor?, viewer: UserId?, tag: Hashtag?, author: UserId?) = FeedPage(List(postCount) { post }, null)
         override fun comments(post: PostId, limit: Int, after: CommentCursor?) = CommentPage(emptyList(), null)
     }
-    val app = customizationSupport(access.protect(routes(settingsRoutes(service, accounts, accountService, access),
-        webRoutes(queries, access = access, accounts = accounts, accountService = accountService, threads = threads))), service, accounts, access)
+    private val notifications = notificationStore?.let { com.example.social.notifications.Notifications(it) }
+    private val content = access.protect(routes(settingsRoutes(service, accounts, accountService, access),
+        webRoutes(queries, access = access, accounts = accounts, accountService = accountService, threads = threads),
+        *listOfNotNull(notifications?.let { notificationWebRoutes(it, access) }).toTypedArray()))
+    val app = customizationSupport(notifications?.let { notificationSupport(content, it, access) } ?: content, service, accounts, access)
     fun get(path: String, who: String = "reader") = app(Request(Method.GET, path).header("Cookie", "session=$who"))
 }
 

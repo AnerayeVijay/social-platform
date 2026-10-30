@@ -9,6 +9,7 @@ import com.example.social.api.routes as postRoutes
 import com.example.social.application.*
 import com.example.social.http.*
 import com.example.social.infrastructure.*
+import com.example.social.notifications.Notifications
 import com.example.social.web.*
 import org.flywaydb.core.Flyway
 import org.http4k.routing.routes
@@ -38,7 +39,8 @@ fun main() {
     val articleRepository = PostgresArticleFeeds(dataSource)
     val articleFeeds = ArticleFeedService(articleRepository, fetcher = HttpArticleFeedFetcher(), content = articleRepository)
     val customization = CustomizationService(PostgresMemberCustomizations(dataSource), rasterImages, imageGate)
-    val content = routes(settingsRoutes(customization, accounts, accountService, access), articleFeedRoutes(articleFeeds, access), commentRoutes(threads, access), webRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, articleFeeds),
+    val notifications = Notifications(PostgresNotifications(dataSource))
+    val content = routes(notificationWebRoutes(notifications, access), settingsRoutes(customization, accounts, accountService, access), articleFeedRoutes(articleFeeds, access), commentRoutes(threads, access), webRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, articleFeeds),
         mobileReadRoutes(queries, accounts, access, follows), followRoutes(follows, access), postRoutes(service, access))
     val publicAccounts = AuthRateLimit().protect(routes(accountRoutes(accountService, accounts, sessions, access, secureCookies), authenticationRoutes(accountService, sessions, access)))
     val google = System.getenv("GOOGLE_CLIENT_ID")?.let {
@@ -48,7 +50,7 @@ fun main() {
     }
     val port = (System.getenv("PORT") ?: "8080").toInt()
     val translator = System.getenv("GOOGLE_TRANSLATION_API_KEY")?.takeIf { it.isNotBlank() }?.let { GoogleTranslation(it) }
-    val site = customizationSupport(serverRoutes(content, publicAccounts, google, access), customization, accounts, access)
+    val site = customizationSupport(notificationSupport(serverRoutes(content, publicAccounts, google, access), notifications, access), customization, accounts, access)
     languageSupport(site, accounts, access, secureCookies, translator)
         .asServer(ReadTimeoutUndertow(port, Duration.ofSeconds(15))).start()
     println("Openly web and API listening on http://localhost:$port")

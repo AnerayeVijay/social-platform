@@ -37,6 +37,7 @@ social-platform/
 ├── web/             Browser pages, forms, views, Google sign-in callbacks
 ├── api/             JSON endpoints and bearer authentication
 ├── http-common/     Shared HTTP security and cursor utilities
+├── notifications/   Notification types, store port and read/list service
 ├── server/          Executable application and dependency wiring
 ├── application/     Shared use cases and storage/query interfaces
 ├── domain/          Business objects and invariants
@@ -160,6 +161,27 @@ Only one image is processed at a time per server instance; busy uploads can be r
 Uploading requires JavaScript. Theme/profile editing and image removal use normal forms. Background
 images require an authenticated owner session, while profile photos are public wherever the global
 `MEMBERS_ONLY` policy permits access. These controls are website-only; existing mobile APIs are unchanged.
+
+### Notifications
+
+Signed-in pages show a bell in the header with an unread badge and a dropdown of the 10 most
+recent notices; **View all notifications** opens the paginated history at `/notifications`.
+Notices are created for: follow requests, accepted follow requests, new posts (only from members
+you follow), likes on your posts, and comments or replies on your posts. Members never notify
+themselves.
+
+- Clicking a notice marks that one read and goes to its target (requests page, profile, post or
+  comment); **Mark all as read** marks the currently visible notices read. Opening the dropdown or loading a page never marks
+  anything read.
+- Withdrawn actions (cancelled request, removed like, deleted comment) and content you can no
+  longer see are excluded from the list and count on the next page load or poll.
+- Notices start fresh: nothing is back-filled for activity that happened before the feature.
+- The dropdown is server-rendered, so it works without JavaScript (each notice is a form button
+  and the history page has plain "older" links). With JavaScript, a visible page refreshes it from
+  `GET /notifications/recent` every 30 seconds; hidden tabs do not poll and refresh on return.
+- `POST /notifications/{id}/open` and `POST /notifications/read-all` use the session cookie and its
+  CSRF token. History and polling responses are user-specific and `no-store`. `/notifications/recent` is a
+  web-session endpoint for the page script, not part of the mobile API.
 
 ### Post fonts and images
 
@@ -504,6 +526,7 @@ curl http://localhost:8080/health
 - **Infrastructure** (`:infrastructure`): PostgreSQL adapter, connection pool and Flyway migration.
 - **HTTP common** (`:http-common`): shared session resolution, CSRF checks, authentication rate limiting, form parsing, and feed cursor encoding.
 - **API** (`:api`): JSON post, feed, comment, profile, and bearer-authentication endpoints, with HTTP contract tests.
+- **Notifications** (`:notifications`): notification kinds, the store port, and the list, unread-count and mark-read service. PostgreSQL storage lives in infrastructure.
 - **Web** (`:web`): server-rendered pages, forms, HTML/CSS, browser account flows, and Google callbacks, with handler and browser tests.
 - **Server** (`:server`): executable entry point, environment configuration, dependency wiring, and combined routing/access-control tests.
 

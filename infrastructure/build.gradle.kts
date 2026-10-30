@@ -1,6 +1,7 @@
 dependencies {
     implementation(project(":domain"))
     implementation(project(":application"))
+    implementation(project(":notifications"))
     implementation("org.postgresql:postgresql:42.7.14")
     implementation("com.zaxxer:HikariCP:7.0.2")
     implementation("org.flywaydb:flyway-core:11.14.1")

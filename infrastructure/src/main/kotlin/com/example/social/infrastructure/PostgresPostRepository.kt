@@ -37,23 +37,38 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
         }
     }
     override fun setLike(id: PostId, user: UserId, liked: Boolean): Boolean = dataSource.connection.use { c ->
-        if (liked) c.prepareStatement("INSERT INTO post_likes(post_id,user_id) SELECT p.id, ? FROM posts p WHERE p.id=? AND ${postVisibilitySql()} ON CONFLICT DO NOTHING").use {
-            it.setObject(1, user.value); it.setObject(2, id.value); it.setObject(3, user.value); it.executeUpdate()
-        } else c.prepareStatement("DELETE FROM post_likes l USING posts p WHERE p.id=l.post_id AND l.post_id=? AND l.user_id=? AND ${postVisibilitySql()}").use {
-            it.setObject(1, id.value); it.setObject(2, user.value); it.setObject(3, user.value); it.executeUpdate()
-        }
-        c.prepareStatement("SELECT 1 FROM posts p WHERE p.id=? AND ${postVisibilitySql()}").use {
-            it.setObject(1, id.value); it.setObject(2, user.value); it.executeQuery().use { rows -> rows.next() }
-        }
+        c.autoCommit = false
+        try {
+            if (liked) {
+                val inserted = c.prepareStatement("INSERT INTO post_likes(post_id,user_id) SELECT p.id, ? FROM posts p WHERE p.id=? AND ${postVisibilitySql()} ON CONFLICT DO NOTHING").use {
+                    it.setObject(1, user.value); it.setObject(2, id.value); it.setObject(3, user.value); it.executeUpdate() == 1
+                }
+                if (inserted) NotificationWriter.addPostLike(c, id, user)
+            } else {
+                val removed = c.prepareStatement("DELETE FROM post_likes l USING posts p WHERE p.id=l.post_id AND l.post_id=? AND l.user_id=? AND ${postVisibilitySql()}").use {
+                    it.setObject(1, id.value); it.setObject(2, user.value); it.setObject(3, user.value); it.executeUpdate() == 1
+                }
+                if (removed) NotificationWriter.removePostLike(c, id, user)
+            }
+            c.prepareStatement("SELECT 1 FROM posts p WHERE p.id=? AND ${postVisibilitySql()}").use {
+                it.setObject(1, id.value); it.setObject(2, user.value); it.executeQuery().use { rows -> rows.next() }
+            }.also { c.commit() }
+        } catch (e: Exception) { c.rollback(); throw e }
     }
 
     override fun appendComment(id: PostId, comment: Comment): Boolean = dataSource.connection.use { c ->
-        c.prepareStatement("INSERT INTO comments(id,post_id,author_id,body,created_at) SELECT ?,p.id,?,?,? FROM posts p WHERE p.id=? AND ${postVisibilitySql()}").use {
-            it.setObject(1, comment.id.value); it.setObject(2, comment.authorId.value); it.setString(3, comment.body)
-            it.setTimestamp(4, java.sql.Timestamp.from(comment.createdAt)); it.setObject(5, id.value)
-            it.setObject(6, comment.authorId.value)
-            it.executeUpdate() == 1
-        }
+        c.autoCommit = false
+        try {
+            val inserted = c.prepareStatement("INSERT INTO comments(id,post_id,author_id,body,created_at) SELECT ?,p.id,?,?,? FROM posts p WHERE p.id=? AND ${postVisibilitySql()}").use {
+                it.setObject(1, comment.id.value); it.setObject(2, comment.authorId.value); it.setString(3, comment.body)
+                it.setTimestamp(4, java.sql.Timestamp.from(comment.createdAt)); it.setObject(5, id.value)
+                it.setObject(6, comment.authorId.value)
+                it.executeUpdate() == 1
+            }
+            if (inserted) NotificationWriter.addPostComment(c, comment.id)
+            c.commit()
+            inserted
+        } catch (e: Exception) { c.rollback(); throw e }
     }
 
     private fun exists(c: Connection, id: PostId): Boolean = c.prepareStatement("SELECT 1 FROM posts WHERE id=?").use {
@@ -94,6 +109,7 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
             }
             syncLikes(c, post)
             syncComments(c, post.copy(comments = emptyList()), post)
+            NotificationWriter.addNewPost(c, post.id)
             c.commit()
             post
         } catch (e: Exception) {
