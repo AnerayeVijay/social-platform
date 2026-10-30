@@ -61,7 +61,7 @@ class HashtagPageTest {
     }
 }
 
-private class EmptyPosts : PostRepository {
+internal class EmptyPosts : PostRepository {
     override fun save(post: Post) = post
     override fun find(id: PostId): Post? = null
     override fun page(limit: Int, before: java.time.Instant?): List<Post> = emptyList()
