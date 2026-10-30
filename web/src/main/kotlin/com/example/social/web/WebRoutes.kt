@@ -361,7 +361,7 @@ private const val composerStyles = """
 .tool{display:inline-flex;align-items:center;gap:.35rem;min-height:36px;padding:.3rem .5rem;background:transparent;color:var(--ink);border:0;border-radius:8px;font-size:.85rem;font-weight:500}
 .tool svg{width:18px;height:18px}.tool:hover:not(:disabled){background:var(--soft)}.tool:disabled{opacity:.5;cursor:not-allowed}
 .composer-tools .publish{margin-left:auto;min-height:40px;padding:.5rem 1.4rem;background:#0f0f0f;color:#fff;border:0;border-radius:999px;font-weight:700}
-.composer .media-picker>label{position:absolute;left:-9999px}
+.composer .media-picker>label,.composer .media-picker>input[type=file]{position:absolute;left:-9999px}
 .emoji-palette{display:flex;flex-wrap:wrap;gap:.2rem;margin-top:.5rem}.emoji-palette[hidden]{display:none}.emoji-palette button{width:36px;min-height:36px;padding:0;font-size:1.2rem;background:transparent;border:0;border-radius:8px}.emoji-palette button:hover{background:var(--soft)}
 """
 
