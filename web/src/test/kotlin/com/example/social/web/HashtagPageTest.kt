@@ -46,17 +46,16 @@ class HashtagPageTest {
         assertEquals("India wins! #Cricket #TeamIndia", page.select("article.post .post-body").first()!!.text())
     }
 
-    @Test fun `for you shows tagged posts from followed members only and asks anonymous readers to sign in`() {
-        val followed = UserId.new()
-        val mine = PostSummary(PostId.new(), followed, "Followed #Cricket", Instant.now(), setOf(Hashtag("cricket")), 0, 0, false)
-        val followingQueries = object : PostQueries by queries {
-            override fun followingFeed(viewer: UserId, limit: Int, before: PostCursor?, tag: Hashtag?, author: UserId?) =
-                FeedPage(listOf(mine).filter { tag == null || tag in it.hashtags }, null)
+    @Test fun `for you lists followed members' tagged posts before others and asks anonymous readers to sign in`() {
+        val followed = PostSummary(PostId.new(), UserId.new(), "Followed #Cricket", Instant.now(), setOf(Hashtag("cricket")), 0, 0, false)
+        val other = PostSummary(PostId.new(), UserId.new(), "Other #Cricket", Instant.now(), setOf(Hashtag("cricket")), 0, 0, false)
+        val forYouQueries = object : PostQueries by queries {
+            override fun forYou(viewer: UserId, limit: Int, before: ForYouCursor?, tag: Hashtag) = ForYouPage(listOf(followed, other), null)
         }
         val f = FollowWebFixture()
-        val app = f.access.protect(webRoutes(followingQueries, PostService(EmptyPosts()), f.access, f.accounts))
+        val app = f.access.protect(webRoutes(forYouQueries, PostService(EmptyPosts()), f.access, f.accounts))
         val signedIn = Jsoup.parse(app(Request(Method.GET, "/hashtags/cricket?view=foryou").header("Cookie", "session=alice")).bodyString())
-        assertEquals("Followed #Cricket", signedIn.select("article.post .post-body").single().text())
+        assertEquals(listOf("Followed #Cricket", "Other #Cricket"), signedIn.select("article.post .post-body").map { it.text() })
         assertNotNull(signedIn.selectFirst("a[href='/hashtags/cricket?view=foryou'][aria-current=page]"))
         val anonymous = Jsoup.parse(app(Request(Method.GET, "/hashtags/cricket?view=foryou")).bodyString())
         assertEquals(0, anonymous.select("article.post").size)
