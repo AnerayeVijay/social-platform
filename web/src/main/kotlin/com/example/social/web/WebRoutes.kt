@@ -179,7 +179,7 @@ private fun contentRoutes(queries: PostQueries, service: PostService?, access: A
                     append("<nav class=\"pagination\" aria-label=\"Feed pagination\"><a class=\"button\" href=\"/?before=${encode(encodePostCursor(it))}&amp;scope=$scope$filter\">Older posts &rarr;</a></nav>")
                 }
             }
-            htmlPage("Community feed", content)
+            htmlPage("Community feed", content, rail = if (session != null && follows != null) suggestionsCard(follows, session) else "")
         } catch (_: IllegalArgumentException) {
             htmlPage("Invalid filter", "<section class=\"card\"><h1>Invalid feed filter</h1><p>Check the hashtag or pagination link.</p><a href=\"/\">Return to feed</a></section>", Status.BAD_REQUEST)
         }
@@ -255,11 +255,11 @@ internal fun withAccountHeader(html: String, session: Session, path: String): St
         .replaceFirst("</aside>", "$signOut</aside>")
 }
 
-internal fun htmlPage(title: String, content: String, status: Status = Status.OK): Response =
+internal fun htmlPage(title: String, content: String, status: Status = Status.OK, rail: String = ""): Response =
     Response(status).header("content-type", "text/html; charset=utf-8")
         .header("X-Content-Type-Options", "nosniff")
         .body("""
             <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#176859"><title>${escapeHtml(title)} · Onely</title>
             <style>$onelyStyles$mediaStyles</style></head><body><script>$mediaErrorScript</script><a class="skip" href="#main">Skip to content</a><header class="topbar"><div class="topbar-inner"><a class="brand" href="/" aria-label="Onely"><span class="brand-symbol" aria-hidden="true">❋</span><span translate="no">Onely<span class="brand-dot">.</span></span></a><span class="brand-tagline">A place for shared ideas</span></div></header>
-            <div class="layout"><aside class="sidebar"><nav class="account-navigation" aria-label="Main navigation"></nav></aside><main id="main">$content</main><aside class="rail"><p class="aside-note">Explore the latest posts and discover conversations through hashtags.</p><form class="search" action="/" method="get"><label class="skip" for="tag">Find a hashtag</label><input id="tag" name="tag" placeholder="Find a hashtag" required maxlength="50"><button type="submit">Find</button></form><div class="sidebar-card"><span class="sprout" aria-hidden="true">✳</span><strong>A place for shared ideas</strong><p>Fresh ideas, small discoveries, and conversations worth having.</p></div></aside></div><footer class="site-footer">Onely · Ideas bring us together.</footer><nav class="mobile-nav" aria-label="Mobile navigation"><a href="/"><span class="nav-icon" aria-hidden="true">⌂</span><span>Community feed</span></a><a href="#tag"><span class="nav-icon" aria-hidden="true">⌕</span><span>Find a hashtag</span></a><a href="/login" class="mobile-account"><span class="nav-icon" aria-hidden="true">♙</span><span>Sign in</span></a></nav>${if (content.contains("media-picker")) "<script>$mediaPickerScript</script>" else ""}</body></html>
+            <div class="layout"><aside class="sidebar"><nav class="account-navigation" aria-label="Main navigation"></nav></aside><main id="main">$content</main><aside class="rail"><p class="aside-note">Explore the latest posts and discover conversations through hashtags.</p><form class="search" action="/" method="get"><label class="skip" for="tag">Find a hashtag</label><input id="tag" name="tag" placeholder="Find a hashtag" required maxlength="50"><button type="submit">Find</button></form>$rail<div class="sidebar-card"><span class="sprout" aria-hidden="true">✳</span><strong>A place for shared ideas</strong><p>Fresh ideas, small discoveries, and conversations worth having.</p></div></aside></div><footer class="site-footer">Onely · Ideas bring us together.</footer><nav class="mobile-nav" aria-label="Mobile navigation"><a href="/"><span class="nav-icon" aria-hidden="true">⌂</span><span>Community feed</span></a><a href="#tag"><span class="nav-icon" aria-hidden="true">⌕</span><span>Find a hashtag</span></a><a href="/login" class="mobile-account"><span class="nav-icon" aria-hidden="true">♙</span><span>Sign in</span></a></nav>${if (content.contains("media-picker")) "<script>$mediaPickerScript</script>" else ""}</body></html>
         """.trimIndent())

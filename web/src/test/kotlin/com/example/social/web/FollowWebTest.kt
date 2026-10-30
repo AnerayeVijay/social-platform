@@ -193,7 +193,7 @@ internal class FollowWebFixture(private val extraMembers: List<Account> = emptyL
         override fun delete(digest: String) = Unit
         override fun deleteForAccount(id: UserId) = Unit
     }, false)
-    val follows = FollowService(accounts, WebMemoryFollows())
+    val follows = FollowService(accounts, WebMemoryFollows(listOf(alice, bob)))
     private val post = PostSummary(PostId.new(), bob, "Bob's post", Instant.now(), setOf(Hashtag("kotlin")), 0, 0, false)
     val queries = object : PostQueries {
         override fun feed(limit: Int, before: PostCursor?, viewer: UserId?, tag: Hashtag?, author: UserId?) =
@@ -208,7 +208,7 @@ internal class FollowWebFixture(private val extraMembers: List<Account> = emptyL
         .header("Cookie", "session=$who").header("content-type", "application/x-www-form-urlencoded").body("csrf=csrf"))
 }
 
-private class WebMemoryFollows : Follows {
+private class WebMemoryFollows(private val members: List<UserId> = emptyList()) : Follows {
     override fun count(member: UserId, kind: FollowList) = list(member, kind, Int.MAX_VALUE, null).size.toLong()
     private val rows = mutableMapOf<Pair<UserId, UserId>, FollowState>()
     override fun state(follower: UserId, followed: UserId) = rows[follower to followed] ?: FollowState.NONE
@@ -226,4 +226,5 @@ private class WebMemoryFollows : Follows {
         }
     }.keys.map { if (kind == FollowList.FOLLOWING) it.second else it.first }.sortedBy { it.value.toString() }
         .filter { after == null || it.value.toString() > after.value.toString() }.take(limit)
+    override fun suggestions(member: UserId, limit: Int) = members.filter { it != member && state(member, it) == FollowState.NONE }.take(limit)
 }

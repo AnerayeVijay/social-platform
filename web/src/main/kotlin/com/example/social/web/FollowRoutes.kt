@@ -11,6 +11,14 @@ import java.nio.charset.StandardCharsets.UTF_8
 internal fun followForm(id: UserId, action: String, label: String, session: Session): String =
     "<form action=\"/web/follows/${id.value}/$action\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button class=\"button\" type=\"submit\">$label</button></form>"
 
+internal fun suggestionsCard(service: FollowService, session: Session): String {
+    val members = service.suggestions(session.accountId)
+    if (members.isEmpty()) return ""
+    return "<section class=\"card suggestions\"><h2>Who to follow</h2>" +
+        members.joinToString("") { "<div class=\"suggestion\"><a href=\"/profiles/${it.id.value}\" translate=\"no\">${escapeHtml(it.displayName)}</a>${followForm(it.id, "request", "Follow", session)}</div>" } +
+        "</section>"
+}
+
 internal fun followNavigation(service: FollowService, session: Session): String =
     "<nav class=\"card follow-navigation\" aria-label=\"Member connections\"><a href=\"/members\">Find members</a> · <a href=\"/me/follow-requests\">Follow requests</a> <span class=\"pending-count\">${service.pendingCount(session.accountId)}</span> · <a href=\"/me/followers\">Followers</a> <span class=\"followers-count\">${service.count(session.accountId, FollowList.FOLLOWERS)}</span> · <a href=\"/me/following\">Following</a> <span class=\"following-count\">${service.count(session.accountId, FollowList.FOLLOWING)}</span></nav>"
 
