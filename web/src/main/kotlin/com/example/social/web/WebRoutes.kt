@@ -330,10 +330,9 @@ private fun composerHead(session: Session, accounts: Accounts?): String {
 private fun composerIcon(body: String) = "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\">$body</svg>"
 
 private fun composerTools(): String {
-    val attach = " data-attach=\"post-images\""
     val tools = listOf(
-        composerTool("Photo", composerIcon("""<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 9"/>"""), enabled = true, attributes = attach),
-        composerTool("Video", composerIcon("""<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>"""), enabled = true, attributes = attach),
+        composerTool("Photo", composerIcon("""<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 9"/>"""), enabled = true, attributes = " data-attach"),
+        composerTool("Video", composerIcon("""<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>"""), enabled = true, attributes = " data-attach"),
         composerTool("Emoji", composerIcon("""<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4 4 0 0 0 7 0"/><circle cx="9" cy="10" r=".6"/><circle cx="15" cy="10" r=".6"/>"""), enabled = true, attributes = " data-emoji"),
         composerTool("Hashtags", composerIcon("""<path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/>"""), enabled = true, attributes = " data-insert=\"#\""),
         composerTool("Poll", composerIcon("""<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-5M12 17V8M16 17v-3"/>"""))
@@ -341,9 +340,9 @@ private fun composerTools(): String {
     val palette = EMOJI.joinToString("") { "<button type=\"button\" data-insert=\"$it\">$it</button>" }
     return "<div class=\"composer-tools\">$tools</div>" +
         "<div class=\"emoji-palette\" hidden>$palette</div>" +
-        "<script>document.querySelectorAll('[data-attach]').forEach(function(b){b.addEventListener('click',function(){document.getElementById(b.dataset.attach).click()})});" +
-        "document.querySelectorAll('[data-toggle]').forEach(function(b){b.addEventListener('click',function(){var p=document.getElementById(b.dataset.toggle);p.hidden=!p.hidden})});" +
-        "document.querySelectorAll('[data-insert]').forEach(function(b){b.addEventListener('click',function(){var t=document.getElementById('body');t.focus();t.setRangeText(b.dataset.insert,t.selectionStart,t.selectionEnd,'end')})})</script>"
+        "<script>document.querySelectorAll('[data-attach]').forEach(function(b){b.addEventListener('click',function(){b.closest('form').querySelector('input[type=file]').click()})});" +
+        "document.querySelectorAll('[data-emoji]').forEach(function(b){b.addEventListener('click',function(){var p=b.closest('form').querySelector('.emoji-palette');p.hidden=!p.hidden})});" +
+        "document.querySelectorAll('[data-insert]').forEach(function(b){b.addEventListener('click',function(){var t=b.closest('form').querySelector('textarea');t.focus();t.setRangeText(b.dataset.insert,t.selectionStart,t.selectionEnd,'end')})})</script>"
 }
 
 private val EMOJI = listOf("😀", "😂", "😍", "👍", "🎉", "🔥", "❤️", "🙏", "😮", "😢", "🤔", "👏")
