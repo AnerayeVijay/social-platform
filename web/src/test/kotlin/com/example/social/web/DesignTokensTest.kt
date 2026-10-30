@@ -22,4 +22,9 @@ class DesignTokensTest {
         assertTrue(style.contains("--teal:#4f46e5"), "indigo accent token")
         assertEquals("#4f46e5", doc.selectFirst("meta[name=theme-color]")!!.attr("content"))
     }
+
+    @Test fun `dark theme uses a violet accent`() {
+        val style = Jsoup.parse(htmlPage("Home", "<p>Body</p>").bodyString()).selectFirst("style")!!.data()
+        assertTrue(style.contains("--teal:#a5b4fc"), "violet accent token in dark palette")
+    }
 }

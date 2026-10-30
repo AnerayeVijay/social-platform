@@ -2,7 +2,7 @@ package com.example.social.web
 
 private val darkPalette = """
     color-scheme:dark;--page-bg:#101916;--ink:#e3eee8;--muted:#adbbb2;--surface:#19251f;
-    --line:#34473b;--soft:#23382c;--teal:#82d6ad;--field:#142119;--button-ink:#10231a;
+    --line:#34473b;--soft:#23382c;--teal:#a5b4fc;--field:#142119;--button-ink:#10231a;
     --page-overlay:rgba(8,16,12,.55);--header-overlay:rgba(16,25,22,.8);--shadow:0 2px 8px #0005;
 """.trimIndent()
 
