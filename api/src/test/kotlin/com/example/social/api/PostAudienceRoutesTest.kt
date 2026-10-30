@@ -56,6 +56,47 @@ class PostAudienceRoutesTest {
         assertEquals(Status.BAD_REQUEST, call(Method.POST, "/posts", body = """{"body":"Invalid","visibility":"unknown"}""").status)
     }
 
+    @Test fun `owner edits and deletes a post while others and anonymous callers are refused`() {
+        val owner = UserId.new()
+        val other = UserId.new()
+        val rows = mutableMapOf<PostId, Post>()
+        val repository = object : PostRepository {
+            override fun save(post: Post) = post.also { rows[it.id] = it }
+            override fun find(id: PostId) = rows[id]
+            override fun page(limit: Int, before: Instant?) = rows.values.take(limit)
+            override fun findByHashtag(tag: Hashtag, limit: Int) = emptyList<Post>()
+            override fun update(id: PostId, change: (Post) -> Post) = rows[id]?.let(change)?.also { rows[id] = it }
+            override fun delete(id: PostId, owner: UserId) = rows[id]?.takeIf { it.authorId == owner }?.let { rows.remove(id) } != null
+        }
+        val access = AccessControl(object : Sessions {
+            override fun find(digest: String, now: Instant) = when (digest) {
+                tokenDigest("owner") -> Session(digest, owner, "csrf", now.plusSeconds(60))
+                tokenDigest("other") -> Session(digest, other, "csrf", now.plusSeconds(60))
+                else -> null
+            }
+            override fun create(session: Session) = Unit
+            override fun delete(digest: String) = Unit
+            override fun deleteForAccount(id: UserId) = Unit
+        }, false)
+        val app = access.protect(routes(PostService(repository), access))
+        fun call(method: Method, path: String, who: String? = "owner", body: String = ""): Response {
+            val request = Request(method, path).body(body)
+            return app(if (who == null) request else request.header("Authorization", "Bearer $who"))
+        }
+        assertEquals(Status.CREATED, call(Method.POST, "/posts", body = """{"body":"Hello #old"}""").status)
+        val path = "/posts/${rows.values.single().id.value}"
+        assertEquals(Status.UNAUTHORIZED, call(Method.PUT, path, null, """{"body":"Anon"}""").status)
+        assertEquals(Status.NOT_FOUND, call(Method.PUT, path, "other", """{"body":"Hijack"}""").status)
+        val edited = call(Method.PUT, path, body = """{"body":"Hello #new"}""")
+        assertEquals(Status.OK, edited.status)
+        assertTrue(edited.bodyString().contains("\"hashtags\":[\"new\"]"))
+        assertEquals(Status.BAD_REQUEST, call(Method.PUT, path, body = """{"body":"   "}""").status)
+        assertEquals(Status.UNAUTHORIZED, call(Method.DELETE, path, null).status)
+        assertEquals(Status.NOT_FOUND, call(Method.DELETE, path, "other").status)
+        assertEquals(Status.NO_CONTENT, call(Method.DELETE, path).status)
+        assertEquals(Status.NOT_FOUND, call(Method.GET, path).status)
+    }
+
     @Test fun `publish accepts font and size with sans normal defaults and rejects unknown presets`() {
         val owner = UserId.new()
         val rows = mutableMapOf<PostId, Post>()

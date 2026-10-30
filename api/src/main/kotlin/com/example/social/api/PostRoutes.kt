@@ -26,6 +26,7 @@ data class PublishRequest(val authorId: String = "", val body: String, val visib
 data class UserRequest(val userId: String = "")
 data class CommentRequest(val authorId: String = "", val body: String)
 data class VisibilityRequest(val visibility: String)
+data class EditPostRequest(val body: String)
 data class PostResponse(
     val id: String, val authorId: String, val body: String, val hashtags: List<String>,
     val likes: List<String>, val likeCount: Int, val comments: List<CommentResponse>, val createdAt: String, val visibility: String,
@@ -76,6 +77,22 @@ fun routes(service: PostService, access: AccessControl? = null): RoutingHttpHand
             val post = service.get(PostId.parse(req.path("id")!!), access?.session(req)?.accountId)
                 ?: return@safely json(Status.NOT_FOUND, mapOf("error" to "Post not found"))
             json(Status.OK, post.response())
+        }
+    },
+
+    "/posts/{id}" bind PUT to { req ->
+        safely {
+            val actor = access?.session(req)?.accountId ?: return@safely json(Status.UNAUTHORIZED, mapOf("error" to "Sign in to continue"))
+            val body: EditPostRequest = mapper.readValue(req.bodyString())
+            json(Status.OK, service.edit(PostId.parse(req.path("id")!!), actor, body.body).response())
+        }
+    },
+
+    "/posts/{id}" bind DELETE to { req ->
+        safely {
+            val actor = access?.session(req)?.accountId ?: return@safely json(Status.UNAUTHORIZED, mapOf("error" to "Sign in to continue"))
+            service.delete(PostId.parse(req.path("id")!!), actor)
+            Response(Status.NO_CONTENT)
         }
     },
 
