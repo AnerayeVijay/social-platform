@@ -12,10 +12,11 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class PostgresHashtagQueriesTest {
     @Test fun `search matches partial names and pages by post count then name`() {
-        withDatabase { repository, queries ->
+        withDatabase { repository, queries, _ ->
             val author = UserId.new()
             val now = Instant.now()
             repository.save(Post.publish(author, "#cricket #cricketer", now = now))
@@ -31,7 +32,7 @@ class PostgresHashtagQueriesTest {
     }
 
     @Test fun `hashtag counts and search only include posts the viewer can see`() {
-        withDatabase { repository, queries ->
+        withDatabase { repository, queries, _ ->
             val owner = UserId.new()
             val stranger = UserId.new()
             repository.save(Post.publish(owner, "#secret").copy(visibility = PostVisibility.PRIVATE))
@@ -44,7 +45,7 @@ class PostgresHashtagQueriesTest {
     }
 
     @Test fun `trending ranks public posts in the window by growth against the previous window`() {
-        withDatabase { repository, queries ->
+        withDatabase { repository, queries, _ ->
             val author = UserId.new()
             val now = Instant.now()
             repository.save(Post.publish(author, "#cricket", now = now.minusSeconds(3600)))
@@ -61,14 +62,27 @@ class PostgresHashtagQueriesTest {
         }
     }
 
-    private fun withDatabase(block: (PostgresPostRepository, PostgresPostQueries) -> Unit) {
+    @Test fun `each hashtag records when it was first stored`() {
+        withDatabase { repository, _, dataSource ->
+            val before = Instant.now().minusSeconds(1)
+            repository.save(Post.publish(UserId.new(), "#firstseen"))
+            val stored = queryTimestamp(dataSource, "SELECT created_at FROM hashtags WHERE name = 'firstseen'")
+            assertTrue(stored != null && stored.isAfter(before))
+        }
+    }
+
+    private fun queryTimestamp(dataSource: HikariDataSource, sql: String): Instant? = dataSource.connection.use { c ->
+        c.createStatement().use { s -> s.executeQuery(sql).use { rs -> if (rs.next()) rs.getObject(1, java.time.OffsetDateTime::class.java).toInstant() else null } }
+    }
+
+    private fun withDatabase(block: (PostgresPostRepository, PostgresPostQueries, HikariDataSource) -> Unit) {
         PostgreSQLContainer<Nothing>("postgres:17-alpine").use { database ->
             database.start()
             HikariDataSource(HikariConfig().apply {
                 jdbcUrl = database.jdbcUrl; username = database.username; password = database.password
             }).use { dataSource ->
                 Flyway.configure().dataSource(dataSource).load().migrate()
-                block(PostgresPostRepository(dataSource), PostgresPostQueries(dataSource))
+                block(PostgresPostRepository(dataSource), PostgresPostQueries(dataSource), dataSource)
             }
         }
     }
