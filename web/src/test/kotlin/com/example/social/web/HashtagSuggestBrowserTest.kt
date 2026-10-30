@@ -34,7 +34,7 @@ class HashtagSuggestBrowserTest {
                     context.addCookies(listOf(Cookie("session", "alice").setUrl(base)))
                     val page = context.newPage()
                     page.navigate("$base/")
-                    page.getByText("Create post", Page.GetByTextOptions().setExact(true)).click()
+                    page.getByText("Share your thoughts ...", Page.GetByTextOptions().setExact(true)).click()
                     val composer = page.locator("textarea[data-hashtag-suggest=composer]")
                     composer.fill("hello #cri")
                     page.locator(".create-post .hashtag-suggestions button:has-text('#cricketer')").waitFor()

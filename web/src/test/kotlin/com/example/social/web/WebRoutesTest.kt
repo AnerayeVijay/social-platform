@@ -110,6 +110,37 @@ class WebRoutesTest {
         assertEquals(author, filter)
     }
 
+    @Test fun `signed in composer is a share box with a toolbar of icons and a close control`() {
+        val repository = object : PostRepository {
+            override fun save(post: Post) = post
+            override fun find(id: PostId) = null
+            override fun page(limit: Int, before: Instant?) = emptyList<Post>()
+            override fun findByHashtag(tag: Hashtag, limit: Int) = emptyList<Post>()
+            override fun update(id: PostId, change: (Post) -> Post): Post? = null
+        }
+        val sessions = object : Sessions {
+            override fun create(session: Session) = Unit
+            override fun find(digest: String, now: Instant) = if (digest == tokenDigest("valid")) Session(digest, UserId.new(), "csrf", now.plusSeconds(60)) else null
+            override fun delete(digest: String) = Unit
+            override fun deleteForAccount(id: UserId) = Unit
+        }
+        val queries = object : PostQueries {
+            override fun feed(limit: Int, before: PostCursor?, viewer: UserId?, tag: Hashtag?, author: UserId?) = FeedPage(emptyList(), null)
+            override fun comments(post: PostId, limit: Int, after: CommentCursor?) = CommentPage(emptyList(), null)
+        }
+        val access = AccessControl(sessions, false)
+        val app = access.protect(webRoutes(queries, PostService(repository), access))
+        val document = Jsoup.parse(app(Request(Method.GET, "/").header("Cookie", "session=valid")).bodyString())
+        val composer = document.selectFirst(".create-post")!!
+        assertEquals("Share your thoughts ...", composer.selectFirst("summary")!!.text())
+        assertEquals("Share your thoughts ...", composer.selectFirst("textarea[name=body]")!!.attr("placeholder"))
+        val tools = composer.selectFirst(".composer-tools")!!
+        assertNotNull(tools.selectFirst("button[data-attach=post-images]"))
+        assertTrue(tools.select("button[disabled]").size >= 6)
+        assertEquals("button", tools.selectFirst(".composer-close")!!.attr("type"))
+        assertEquals("Publish post", tools.selectFirst("button[type=submit]")!!.text())
+    }
+
     @Test fun `signed in web composer publishes as current user`() {
         var saved: Post? = null
         val actor = UserId.new()

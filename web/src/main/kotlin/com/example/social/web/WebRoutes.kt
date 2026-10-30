@@ -324,7 +324,40 @@ private fun audienceSelector(id: String, selected: PostVisibility): String =
     } + "</select><p class=\"audience-help\">Members only posts are visible to your approved followers. Private posts are visible only to you.</p>"
 
 private fun composer(session: Session): String =
-    "<details class=\"create-post\"><summary class=\"button\"><span aria-hidden=\"true\">＋</span> <span>Create post</span></summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"What would you like to share?\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${styleSelectors()}${mediaPicker("post-images", Post.MAX_IMAGES)}<p><button class=\"button\" type=\"submit\">Publish post</button></p></form></section></details><script>$mediaPickerScript</script>"
+    "<details class=\"create-post\"><summary class=\"post-prompt\"><span>Share your thoughts ...</span></summary><section class=\"card composer\"><form action=\"/web/posts\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label class=\"skip\" for=\"body\">Share a thought</label><textarea id=\"body\" name=\"body\" data-font=\"sans\" data-size=\"normal\" data-hashtag-suggest=\"composer\" rows=\"3\" maxlength=\"2000\" required placeholder=\"Share your thoughts ...\"></textarea>${audienceSelector("new-post-audience", PostVisibility.MEMBERS)}${styleSelectors()}${mediaPicker("post-images", Post.MAX_IMAGES)}${composerTools()}</form></section></details><script>$mediaPickerScript</script>"
+
+private fun composerIcon(body: String) = "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\">$body</svg>"
+
+private fun composerTools(): String {
+    val disabled = listOf(
+        "Add emoji" to composerIcon("""<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4 4 0 0 0 7 0"/><circle cx="9" cy="10" r=".6"/><circle cx="15" cy="10" r=".6"/>"""),
+        "Add event" to composerIcon("""<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/>"""),
+        "Add job" to composerIcon("""<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 13h18"/>"""),
+        "Add poll" to composerIcon("""<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-5M12 17V8M16 17v-3"/>"""),
+        "Add document" to composerIcon("""<path d="M6 3h8l4 4v14H6z"/><path d="M9 11h6M9 15h6"/>""")
+    ).joinToString("") { (label, icon) -> "<button type=\"button\" class=\"tool-icon\" disabled aria-label=\"$label\" title=\"Coming soon\">$icon</button>" }
+    val image = composerIcon("""<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 9"/>""")
+    val close = composerIcon("""<path d="M6 6l12 12M18 6L6 18"/>""")
+    return "<div class=\"composer-tools\"><button type=\"button\" class=\"tool-pill\" disabled title=\"Coming soon\">Proofread</button>" +
+        "<button type=\"button\" class=\"tool-icon\" data-attach=\"post-images\" aria-label=\"Add image\" title=\"Add image\">$image</button>" +
+        disabled +
+        "<button type=\"button\" class=\"composer-close\" aria-label=\"Close\" onclick=\"this.closest('details').open=false\">$close</button>" +
+        "<button class=\"publish\" type=\"submit\">Publish post</button></div>" +
+        "<script>document.querySelectorAll('[data-attach]').forEach(function(b){b.addEventListener('click',function(){document.getElementById(b.dataset.attach).click()})})</script>"
+}
+
+private const val composerStyles = """
+.create-post{margin:1rem 0}.create-post>summary{list-style:none;cursor:pointer}.create-post>summary::-webkit-details-marker{display:none}
+.post-prompt{display:block;padding:.9rem 1rem;border:1px solid var(--line);border-radius:12px;color:var(--muted);font-size:1rem;background:transparent}
+.composer-tools{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem;margin-top:.6rem;padding-top:.6rem;border-top:1px solid var(--line)}
+.tool-icon,.composer-close{width:38px;min-height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;color:var(--ink);border:0;border-radius:50%}
+.tool-icon svg,.composer-close svg{width:20px;height:20px}
+.tool-icon:hover:not(:disabled),.composer-close:hover{background:var(--soft)}
+.tool-icon:disabled{opacity:.45;cursor:not-allowed}
+.tool-pill{min-height:34px;padding:.3rem .9rem;background:transparent;color:var(--ink);border:1px solid var(--ink);border-radius:999px;font-weight:600}
+.tool-pill:disabled{opacity:.6;cursor:not-allowed}
+.composer-tools .publish{margin-left:auto}
+"""
 
 internal fun withAccountHeader(html: String, session: Session, path: String): String {
     if (html.contains("class=\"account-controls\"")) return html
@@ -346,6 +379,6 @@ internal fun htmlPage(title: String, content: String, status: Status = Status.OK
         .header("X-Content-Type-Options", "nosniff")
         .body("""
             <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#2563eb"><title>${escapeHtml(title)} · TALLO</title><link rel="icon" type="image/png" href="/assets/tallo-icon.png">
-            <style>$onelyStyles$mediaStyles</style></head><body><script>$mediaErrorScript</script><a class="skip" href="#main">Skip to content</a><header class="topbar"><div class="topbar-inner"><a class="brand" href="/" aria-label="TALLO"><img class="brand-logo" src="/assets/tallo-logo.png" alt="TALLO" width="160" height="107"></a><span class="brand-tagline">Let's talk about it.</span></div></header>
+            <style>$onelyStyles$mediaStyles$composerStyles</style></head><body><script>$mediaErrorScript</script><a class="skip" href="#main">Skip to content</a><header class="topbar"><div class="topbar-inner"><a class="brand" href="/" aria-label="TALLO"><img class="brand-logo" src="/assets/tallo-logo.png" alt="TALLO" width="160" height="107"></a><span class="brand-tagline">Let's talk about it.</span></div></header>
             <div class="layout"><aside class="sidebar"><nav class="account-navigation" aria-label="Main navigation"></nav></aside><main id="main">$content</main><aside class="rail"><p class="aside-note">Find new voices and join the conversation through hashtags.</p><form class="search" action="/" method="get"><label class="skip" for="tag">Find a hashtag</label><input id="tag" name="tag" data-hashtag-suggest="search" placeholder="Find a hashtag" required maxlength="50"><button type="submit">Find</button></form>$rail<div class="sidebar-card"><span class="sprout" aria-hidden="true">✳</span><strong>Let's talk about it.</strong><p>Share a thought, start a conversation, and meet people who care.</p></div></aside></div><footer class="site-footer">TALLO · Let's talk about it.</footer><nav class="mobile-nav" aria-label="Mobile navigation"><a href="/"><span class="nav-icon" aria-hidden="true">⌂</span><span>Community feed</span></a><a href="#tag"><span class="nav-icon" aria-hidden="true">⌕</span><span>Find a hashtag</span></a><a href="/login" class="mobile-account"><span class="nav-icon" aria-hidden="true">♙</span><span>Sign in</span></a></nav>${if (content.contains("media-picker")) "<script>$mediaPickerScript</script>" else ""}<script>$hashtagSuggestScript</script></body></html>
         """.trimIndent())
