@@ -84,6 +84,7 @@ private fun readParts(request: Request, maxAttachments: Int, allowedFields: Set<
                 fields[name] = bytes.toString(Charsets.UTF_8)
             } else {
                 if (name !in FILE_FIELDS) throw malformed()
+                if (part.contentType().isNullOrBlank()) throw malformed()
                 // Browsers submit an unselected file input as an empty part with filename="".
                 val filename = part.filename().orEmpty()
                 if (filename.isBlank()) {

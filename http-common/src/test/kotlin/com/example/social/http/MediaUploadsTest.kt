@@ -156,4 +156,9 @@ class MediaUploadsTest {
         assertFailsWith<MediaUploadTooLarge> { read(request) }
         assertTrue(sent <= maximumRead)
     }
+
+    @Test fun `file parts require a content type header even though it is not trusted`() {
+        val request = req("--$b\r\nContent-Disposition: form-data; name=\"attachments\"; filename=\"a.png\"\r\n\r\nAAA\r\n")
+        assertFailsWith<IllegalArgumentException> { read(request) }
+    }
 }
