@@ -29,4 +29,11 @@ class SidebarNavigationTest {
         assertEquals("/profiles/${f.owner.id.value}", links["My profile"])
         assertEquals("/settings", links["Settings"])
     }
+
+    @Test fun `every left navigation link has an svg icon`() {
+        val f = CustomizationFixture()
+        val links = Jsoup.parse(f.get("/").bodyString()).select(".sidebar nav[aria-label='Main navigation'] a.nav-link")
+        assertEquals(6, links.size)
+        links.forEach { assertNotNull(it.selectFirst("svg"), it.text()) }
+    }
 }

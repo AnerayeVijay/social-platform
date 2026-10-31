@@ -368,12 +368,15 @@ private const val composerStyles = """
 
 internal fun withAccountHeader(html: String, session: Session, path: String): String {
     if (html.contains("class=\"account-controls\"")) return html
-    fun link(href: String, label: String, extra: String = "") =
-        "<a class=\"nav-link$extra\" href=\"$href\"${if (href == path) " aria-current=\"page\"" else ""}>$label</a>"
+    fun link(href: String, label: String, icon: String, extra: String = "") =
+        "<a class=\"nav-link$extra\" href=\"$href\"${if (href == path) " aria-current=\"page\"" else ""}>${composerIcon(icon)}$label</a>"
     val navigation = "<span class=\"avatar account-avatar\" aria-hidden=\"true\" translate=\"no\">♙</span>" +
-        link("/", "Home") + link("/members", "Find members") + link("/notifications", "Notifications") +
-        link("/me/articles", "News &amp; Articles") + link("/profiles/${session.accountId.value}", "My profile", " account-profile") +
-        link("/settings", "Settings")
+        link("/", "Home", "<path d=\"M3 11l9-8 9 8\"/><path d=\"M5 10v10h14V10\"/>") +
+        link("/members", "Find members", "<circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"M21 21l-4.3-4.3\"/>") +
+        link("/notifications", "Notifications", "<path d=\"M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9\"/><path d=\"M13.7 21a2 2 0 0 1-3.4 0\"/>") +
+        link("/me/articles", "News &amp; Articles", "<rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M7 8h10M7 12h10M7 16h6\"/>") +
+        link("/profiles/${session.accountId.value}", "My profile", "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21c0-4 3.6-7 8-7s8 3 8 7\"/>", " account-profile") +
+        link("/settings", "Settings", "<circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1\"/>")
     val signOut = "<form class=\"sidebar-signout\" action=\"/logout\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button type=\"submit\">Sign out</button></form>"
     return html.replaceFirst("</div></header>", "<nav class=\"account-controls\"></nav></div></header>")
         .replaceFirst("<nav class=\"account-navigation\" aria-label=\"Main navigation\">", "<nav class=\"account-navigation\" aria-label=\"Main navigation\">$navigation")
