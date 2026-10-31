@@ -3,6 +3,7 @@ package com.example.social.infrastructure
 import com.example.social.application.*
 import com.example.social.domain.*
 import com.example.social.notifications.*
+import com.example.social.sharedkernel.DomainEvent
 import com.example.social.sharedkernel.EventBus
 import com.zaxxer.hikari.*
 import org.flywaydb.core.Flyway
@@ -509,6 +510,22 @@ class PostgresNotificationsTest {
         assertEquals(setOf(ownComment.id, top.id, reply.id), posts.find(post.id)!!.comments.map { it.id }.toSet())
         assertNotNull(threads.get(post.id, reply.id, owner))
         assertEquals(0L, Notifications(PostgresNotifications(ds)).unreadCount(owner))
+    }
+
+    @Test fun `changing visibility and deleting a post publish events that their notices depend on`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
+        val events = EventBus()
+        val seen = mutableListOf<DomainEvent>()
+        events.subscribe(PostVisibilityChanged::class) { seen += it }
+        events.subscribe(PostDeleted::class) { seen += it }
+        val posts = PostgresPostRepository(ds, events)
+        val post = posts.save(Post.publish(author, "Change me"))
+
+        assertTrue(posts.changeVisibility(post.id, author, PostVisibility.MEMBERS))
+        assertTrue(posts.delete(post.id, author))
+
+        assertEquals(listOf<DomainEvent>(PostVisibilityChanged(post.id, PostVisibility.MEMBERS), PostDeleted(post.id)), seen)
     }
 
     @Test fun `history pages newest first by id without gaps for tied timestamps`() = withDatabase { ds ->

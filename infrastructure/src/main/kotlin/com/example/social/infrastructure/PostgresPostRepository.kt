@@ -34,15 +34,23 @@ class PostgresPostRepository(private val dataSource: DataSource, private val eve
             ids.mapNotNull { id -> load(c, id) }
         }
     }
-    override fun changeVisibility(id: PostId, owner: UserId, visibility: PostVisibility): Boolean = dataSource.connection.use { c ->
-        c.prepareStatement("UPDATE posts SET visibility=? WHERE id=? AND author_id=?").use {
-            it.setString(1, visibility.name.lowercase()); it.setObject(2, id.value); it.setObject(3, owner.value); it.executeUpdate() == 1
+    override fun changeVisibility(id: PostId, owner: UserId, visibility: PostVisibility): Boolean {
+        val changed = dataSource.connection.use { c ->
+            c.prepareStatement("UPDATE posts SET visibility=? WHERE id=? AND author_id=?").use {
+                it.setString(1, visibility.name.lowercase()); it.setObject(2, id.value); it.setObject(3, owner.value); it.executeUpdate() == 1
+            }
         }
+        if (changed) events.publishCommitted(PostVisibilityChanged(id, visibility))
+        return changed
     }
-    override fun delete(id: PostId, owner: UserId): Boolean = dataSource.connection.use { c ->
-        c.prepareStatement("DELETE FROM posts WHERE id=? AND author_id=?").use {
-            it.setObject(1, id.value); it.setObject(2, owner.value); it.executeUpdate() == 1
+    override fun delete(id: PostId, owner: UserId): Boolean {
+        val deleted = dataSource.connection.use { c ->
+            c.prepareStatement("DELETE FROM posts WHERE id=? AND author_id=?").use {
+                it.setObject(1, id.value); it.setObject(2, owner.value); it.executeUpdate() == 1
+            }
         }
+        if (deleted) events.publishCommitted(PostDeleted(id))
+        return deleted
     }
     override fun setLike(id: PostId, user: UserId, liked: Boolean): Boolean {
         var change: DomainEvent? = null
