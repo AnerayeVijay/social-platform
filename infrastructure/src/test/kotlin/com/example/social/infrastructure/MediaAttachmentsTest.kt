@@ -42,7 +42,7 @@ class MediaAttachmentsTest {
 
     @Test fun `comment and reply media persist atomically and appear in every projection`() = withDb { ds ->
         val repository = PostgresPostRepository(ds, EventBus())
-        val threads = PostgresCommentThreads(ds)
+        val threads = PostgresCommentThreads(ds, EventBus())
         val author = UserId.new()
         val post = repository.save(Post.publish(author, "hello"))
         val root = Comment(authorId = author, body = "", attachmentType = "video/webm")
@@ -58,7 +58,7 @@ class MediaAttachmentsTest {
 
     @Test fun `comment media respects post match and audience and refuses unbacked metadata`() = withDb { ds ->
         val repository = PostgresPostRepository(ds, EventBus())
-        val threads = PostgresCommentThreads(ds)
+        val threads = PostgresCommentThreads(ds, EventBus())
         val owner = UserId.new()
         val outsider = UserId.new()
         val post = repository.save(Post.publish(owner, "p"))

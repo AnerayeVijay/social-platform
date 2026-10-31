@@ -68,7 +68,7 @@ class MediaStreamingTest {
 
     @Test fun `comment and reply media stream with post match and audience enforced`() = withDb { ds ->
         val repository = PostgresPostRepository(ds, EventBus())
-        val threads = PostgresCommentThreads(ds)
+        val threads = PostgresCommentThreads(ds, EventBus())
         val owner = UserId.new()
         val follower = UserId.new()
         val post = repository.save(Post.publish(owner, "p"))

@@ -51,7 +51,7 @@ class PostAudienceTest {
                 val root = repository.find(members.id)!!.comments.single()
                 assertTrue(queries.visibleComments(members.id, 20, null, stranger).comments.isEmpty())
                 assertEquals(root.id, queries.visibleComments(members.id, 20, null, follower).comments.single().id)
-                val threads = CommentThreads(PostgresCommentThreads(ds))
+                val threads = CommentThreads(PostgresCommentThreads(ds, EventBus()))
                 val reply = threads.reply(members.id, root.id, follower, "Reply")
                 assertFailsWith<NoSuchElementException> { threads.page(members.id, null, stranger) }
                 assertFailsWith<NoSuchElementException> { threads.get(members.id, root.id, stranger) }

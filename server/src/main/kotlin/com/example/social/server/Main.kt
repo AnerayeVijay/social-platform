@@ -41,7 +41,7 @@ fun main() {
     val follows = FollowService(accounts, PostgresFollows(dataSource))
     val hashtagFollows = HashtagFollowService(PostgresHashtagFollows(dataSource))
     val googleIdentities = PostgresGoogleIdentities(dataSource)
-    val threads = CommentThreads(PostgresCommentThreads(dataSource))
+    val threads = CommentThreads(PostgresCommentThreads(dataSource, events))
     val articleRepository = PostgresArticleFeeds(dataSource)
     val articleFeeds = ArticleFeedService(articleRepository, fetcher = HttpArticleFeedFetcher(), content = articleRepository)
     val customization = CustomizationService(PostgresMemberCustomizations(dataSource), rasterImages, imageGate)

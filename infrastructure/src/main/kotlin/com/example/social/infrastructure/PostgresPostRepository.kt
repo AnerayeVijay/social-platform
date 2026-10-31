@@ -9,8 +9,6 @@ import com.zaxxer.hikari.HikariDataSource
 import java.sql.Connection
 import java.time.Instant
 import java.util.UUID
-import java.util.logging.Level
-import java.util.logging.Logger
 import javax.sql.DataSource
 
 class PostgresPostRepository(private val dataSource: DataSource, private val events: EventBus) : PostRepository {
@@ -65,7 +63,7 @@ class PostgresPostRepository(private val dataSource: DataSource, private val eve
                 }.also { c.commit() }
             } catch (e: Exception) { c.rollback(); throw e }
         }
-        if (newLike) events.publish(PostLiked(id, user)).forEach { log.log(Level.WARNING, "Post like notice failed for post ${id.value}", it) }
+        if (newLike) events.publishCommitted(PostLiked(id, user))
         return visible
     }
 
@@ -76,23 +74,22 @@ class PostgresPostRepository(private val dataSource: DataSource, private val eve
 
     override fun appendCommentWithAttachment(id: PostId, comment: Comment, attachment: PostImage?): Boolean {
         requireBacks(comment, attachment)
-        return dataSource.connection.use { c ->
+        var inserted = false
+        dataSource.connection.use { c ->
             c.autoCommit = false
             try {
-                val inserted = c.prepareStatement("INSERT INTO comments(id,post_id,author_id,body,created_at) SELECT ?,p.id,?,?,? FROM posts p WHERE p.id=? AND ${postVisibilitySql()}").use {
+                inserted = c.prepareStatement("INSERT INTO comments(id,post_id,author_id,body,created_at) SELECT ?,p.id,?,?,? FROM posts p WHERE p.id=? AND ${postVisibilitySql()}").use {
                     it.setObject(1, comment.id.value); it.setObject(2, comment.authorId.value); it.setString(3, comment.body)
                     it.setTimestamp(4, java.sql.Timestamp.from(comment.createdAt)); it.setObject(5, id.value)
                     it.setObject(6, comment.authorId.value)
                     it.executeUpdate() == 1
                 }
-                if (inserted) {
-                    attachment?.let { insertCommentMedia(c, comment.id, it) }
-                    NotificationWriter.addPostComment(c, comment.id)
-                }
+                if (inserted) attachment?.let { insertCommentMedia(c, comment.id, it) }
                 c.commit()
-                inserted
             } catch (e: Exception) { c.rollback(); throw e }
         }
+        if (inserted) events.publishCommitted(CommentAdded(id, comment.id))
+        return inserted
     }
 
     override fun commentAttachment(id: PostId, comment: CommentId, viewer: UserId?): PostImage? =
@@ -303,8 +300,6 @@ class PostgresPostRepository(private val dataSource: DataSource, private val eve
     }
 
     companion object {
-        private val log = Logger.getLogger(PostgresPostRepository::class.java.name)
-
         fun dataSource(): HikariDataSource {
             val config = HikariConfig().apply {
                 jdbcUrl = System.getenv("DATABASE_URL") ?: "jdbc:postgresql://localhost:5432/social"

@@ -25,13 +25,13 @@ class CommentThreadsTest {
                 val unrelated = posts.save(Post.publish(other, "Other post"))
                 val root = Comment(authorId = author, body = "Root")
                 posts.appendComment(post.id, root)
-                val threads = CommentThreads(PostgresCommentThreads(ds))
+                val threads = CommentThreads(PostgresCommentThreads(ds, EventBus()))
                 val reply = threads.reply(post.id, root.id, other, "  First reply  ")
                 val nested = threads.reply(post.id, reply.id, author, "Nested reply")
                 assertEquals(reply.id, nested.parentId)
                 assertEquals("First reply", reply.body)
                 val time = Instant.parse("2026-10-26T12:00:00Z")
-                val repository = PostgresCommentThreads(ds)
+                val repository = PostgresCommentThreads(ds, EventBus())
                 val tied = (1..21).map {
                     Comment(CommentId(java.util.UUID.fromString("00000000-0000-0000-0000-${it.toString().padStart(12, '0')}")), author, "Reply $it", time, root.id)
                         .also { comment -> assertTrue(repository.append(post.id, comment)) }

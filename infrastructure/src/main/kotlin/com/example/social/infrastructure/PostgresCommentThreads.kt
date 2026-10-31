@@ -9,7 +9,7 @@ import java.time.OffsetDateTime
 import java.util.UUID
 import javax.sql.DataSource
 
-class PostgresCommentThreads(private val dataSource: DataSource) : CommentThreadRepository {
+class PostgresCommentThreads(private val dataSource: DataSource, private val events: EventBus) : CommentThreadRepository {
     override fun readable(post: PostId, viewer: UserId?): Boolean = PostgresPostRepository(dataSource, EventBus()).readable(post, viewer)
     override fun get(post: PostId, id: CommentId, viewer: UserId?): ThreadComment? =
         select(post, viewer, "c.id = ?", listOf(id.value), 1).firstOrNull()
@@ -56,23 +56,22 @@ class PostgresCommentThreads(private val dataSource: DataSource) : CommentThread
 
     override fun appendWithAttachment(post: PostId, comment: Comment, attachment: PostImage?): Boolean {
         requireBacks(comment, attachment)
-        return dataSource.connection.use { c ->
+        var inserted = false
+        dataSource.connection.use { c ->
             c.autoCommit = false
             try {
-                val inserted = c.prepareStatement("INSERT INTO comments(id,post_id,author_id,body,created_at,parent_id) SELECT ?,c.post_id,?,?,?,c.id FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.post_id=? AND c.id=? AND ${postVisibilitySql()}").use {
+                inserted = c.prepareStatement("INSERT INTO comments(id,post_id,author_id,body,created_at,parent_id) SELECT ?,c.post_id,?,?,?,c.id FROM comments c JOIN posts p ON p.id=c.post_id WHERE c.post_id=? AND c.id=? AND ${postVisibilitySql()}").use {
                     it.setObject(1, comment.id.value); it.setObject(2, comment.authorId.value); it.setString(3, comment.body)
                     it.setTimestamp(4, Timestamp.from(comment.createdAt)); it.setObject(5, post.value); it.setObject(6, comment.parentId?.value)
                     it.setObject(7, comment.authorId.value)
                     it.executeUpdate() == 1
                 }
-                if (inserted) {
-                    attachment?.let { insertCommentMedia(c, comment.id, it) }
-                    NotificationWriter.addPostComment(c, comment.id)
-                }
+                if (inserted) attachment?.let { insertCommentMedia(c, comment.id, it) }
                 c.commit()
-                inserted
             } catch (e: Exception) { c.rollback(); throw e }
         }
+        if (inserted) events.publishCommitted(CommentAdded(post, comment.id))
+        return inserted
     }
 
     override fun attachment(post: PostId, id: CommentId, viewer: UserId?): PostImage? =

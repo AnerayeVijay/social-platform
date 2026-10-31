@@ -307,7 +307,7 @@ class PostgresNotificationsTest {
             CREATE TRIGGER fail_notice BEFORE INSERT OR DELETE ON notifications FOR EACH ROW EXECUTE FUNCTION fail_notice();
         """) }
         val records = mutableListOf<LogRecord>()
-        val logger = Logger.getLogger(PostgresPostRepository::class.java.name)
+        val logger = Logger.getLogger(NotificationHandlers::class.java.name)
         val capture = object : Handler() {
             override fun publish(record: LogRecord) { records += record }
             override fun flush() {}
@@ -410,7 +410,7 @@ class PostgresNotificationsTest {
         val reader = Account(UserId.new(), "reader@example.com", "Reader", null, true).also(accounts::create).id
         val other = Account(UserId.new(), "other@example.com", "Other", null, true).also(accounts::create).id
         val posts = wiredPosts(ds)
-        val threads = PostgresCommentThreads(ds)
+        val threads = wiredThreads(ds)
         val notifications = Notifications(PostgresNotifications(ds))
         val post = posts.save(Post.publish(owner, "Talk to me"))
         val own = Comment(authorId = owner, body = "First")
@@ -432,7 +432,7 @@ class PostgresNotificationsTest {
         val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create).id
         val stranger = Account(UserId.new(), "s@example.com", "Stranger", null, true).also(accounts::create).id
         val posts = wiredPosts(ds)
-        val threads = PostgresCommentThreads(ds)
+        val threads = wiredThreads(ds)
         val post = posts.save(Post.publish(owner, "Members only").copy(visibility = PostVisibility.MEMBERS))
         val ownComment = Comment(authorId = owner, body = "Mine")
         posts.appendComment(post.id, ownComment)
@@ -444,12 +444,12 @@ class PostgresNotificationsTest {
         assertEquals(0L, Notifications(PostgresNotifications(ds)).unreadCount(owner))
     }
 
-    @Test fun `a failed comment notice rolls back top level comments and replies`() = withDatabase { ds ->
+    @Test fun `a failed comment notice keeps top level comments and replies without notices`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create).id
         val reader = Account(UserId.new(), "reader@example.com", "Reader", null, true).also(accounts::create).id
         val posts = wiredPosts(ds)
-        val threads = PostgresCommentThreads(ds)
+        val threads = wiredThreads(ds)
         val post = posts.save(Post.publish(owner, "Talk to me"))
         val ownComment = Comment(authorId = owner, body = "Mine")
         posts.appendComment(post.id, ownComment)
@@ -457,11 +457,14 @@ class PostgresNotificationsTest {
             CREATE FUNCTION fail_notice() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'} BEGIN RAISE EXCEPTION 'notice write failed'; END ${'$'}${'$'};
             CREATE TRIGGER fail_notice BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION fail_notice();
         """) }
+        val top = Comment(authorId = reader, body = "Top")
+        val reply = Comment(authorId = reader, body = "Reply", parentId = ownComment.id)
 
-        assertFails { posts.appendComment(post.id, Comment(authorId = reader, body = "Top")) }
-        assertFails { threads.append(post.id, Comment(authorId = reader, body = "Reply", parentId = ownComment.id)) }
+        assertTrue(posts.appendComment(post.id, top))
+        assertTrue(threads.append(post.id, reply))
 
-        assertEquals(listOf(ownComment.id), posts.find(post.id)!!.comments.map { it.id })
+        assertEquals(setOf(ownComment.id, top.id, reply.id), posts.find(post.id)!!.comments.map { it.id }.toSet())
+        assertNotNull(threads.get(post.id, reply.id, owner))
         assertEquals(0L, Notifications(PostgresNotifications(ds)).unreadCount(owner))
     }
 
@@ -576,6 +579,7 @@ class PostgresNotificationsTest {
     }
 
     private fun wiredPosts(ds: HikariDataSource) = PostgresPostRepository(ds, EventBus().also { NotificationHandlers(ds).register(it) })
+    private fun wiredThreads(ds: HikariDataSource) = PostgresCommentThreads(ds, EventBus().also { NotificationHandlers(ds).register(it) })
 
     private fun withDatabase(block: (HikariDataSource) -> Unit) {
         PostgreSQLContainer<Nothing>("postgres:17-alpine").use { database ->
