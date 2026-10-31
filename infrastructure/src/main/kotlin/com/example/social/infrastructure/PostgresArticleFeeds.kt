@@ -1,6 +1,8 @@
 package com.example.social.infrastructure
 
 import com.example.social.application.*
+import com.example.social.domain.Comment
+import com.example.social.domain.CommentId
 import com.example.social.domain.UserId
 import java.sql.Connection
 import java.sql.ResultSet
@@ -9,7 +11,7 @@ import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
 
-class PostgresArticleFeeds(private val dataSource: DataSource) : ArticleFeeds, ArticleFeedContent {
+class PostgresArticleFeeds(private val dataSource: DataSource) : ArticleFeeds, ArticleFeedContent, ArticleDiscussions {
     override fun add(source: FeedSource, maxPerOwner: Int): Boolean = transaction { connection ->
         // All adds for a member share this lock, including the first subscription.
         val exists = connection.prepareStatement("SELECT id FROM accounts WHERE id=? FOR UPDATE").use {
@@ -110,6 +112,50 @@ class PostgresArticleFeeds(private val dataSource: DataSource) : ArticleFeeds, A
         return ArticlePage(articles, next)
     }
 
+    override fun page(viewer: UserId, articleId: UUID, limit: Int, after: CommentCursor?): CommentPage? {
+        require(limit in 1..100) { "Invalid comment limit" }
+        val rows = dataSource.connection.use { connection ->
+            val url = connection.visibleUrl(viewer, articleId) ?: return null
+            connection.prepareStatement("""
+                SELECT c.* FROM article_comments c JOIN article_threads t ON t.id=c.thread_id WHERE t.url=?
+                ${if (after == null) "" else "AND (c.created_at,c.id)>(?,?)"}
+                ORDER BY c.created_at,c.id LIMIT ?
+            """.trimIndent()).use { statement ->
+                statement.setString(1, url)
+                var index = 2
+                if (after != null) {
+                    statement.setTimestamp(index++, Timestamp.from(after.createdAt)); statement.setObject(index++, after.id.value)
+                }
+                statement.setInt(index, limit + 1)
+                statement.executeQuery().use { result -> buildList { while (result.next()) add(result.articleComment()) } }
+            }
+        }
+        val comments = rows.take(limit)
+        return CommentPage(comments, if (rows.size > limit) comments.last().let { CommentCursor(it.createdAt, it.id) } else null)
+    }
+
+    override fun add(viewer: UserId, articleId: UUID, comment: Comment): Boolean = transaction { connection ->
+        val url = connection.visibleUrl(viewer, articleId) ?: return@transaction false
+        connection.prepareStatement("INSERT INTO article_threads(id,url,created_at) VALUES (?,?,?) ON CONFLICT(url) DO NOTHING").use {
+            it.setObject(1, UUID.randomUUID()); it.setString(2, url); it.setTimestamp(3, Timestamp.from(comment.createdAt))
+            it.executeUpdate()
+        }
+        connection.prepareStatement("INSERT INTO article_comments(id,thread_id,author_id,body,created_at) SELECT ?,id,?,?,? FROM article_threads WHERE url=?").use {
+            it.setObject(1, comment.id.value); it.setObject(2, comment.authorId.value); it.setString(3, comment.body)
+            it.setTimestamp(4, Timestamp.from(comment.createdAt)); it.setString(5, url)
+            it.executeUpdate()
+        }
+        true
+    }
+
+    /** The article's URL, only when it belongs to a source owned by [viewer]. */
+    private fun Connection.visibleUrl(viewer: UserId, articleId: UUID): String? = prepareStatement(
+        "SELECT a.url FROM feed_articles a JOIN article_feed_sources s ON s.id=a.source_id WHERE a.id=? AND s.owner_id=?"
+    ).use {
+        it.setObject(1, articleId); it.setObject(2, viewer.value)
+        it.executeQuery().use { rows -> if (rows.next()) rows.getString(1) else null }
+    }
+
     private fun <T> transaction(action: (Connection) -> T): T = dataSource.connection.use { connection ->
         connection.autoCommit = false
         try { action(connection).also { connection.commit() } }
@@ -125,5 +171,10 @@ class PostgresArticleFeeds(private val dataSource: DataSource) : ArticleFeeds, A
     private fun ResultSet.article() = FeedArticle(
         getObject("id", UUID::class.java), getObject("source_id", UUID::class.java), getString("source_name"),
         getString("title"), getString("url"), getString("abstract"), getTimestamp("published_at").toInstant()
+    )
+
+    private fun ResultSet.articleComment() = Comment(
+        CommentId(getObject("id", UUID::class.java)), UserId(getObject("author_id", UUID::class.java)),
+        getString("body"), getTimestamp("created_at").toInstant()
     )
 }
