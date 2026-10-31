@@ -1,6 +1,7 @@
 package com.example.social.web
 
 import com.example.social.application.*
+import com.example.social.domain.PostVisibility
 import com.example.social.http.AccessControl
 import com.example.social.http.decodeCommentCursor
 import com.example.social.http.encodeCommentCursor
@@ -12,7 +13,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 import java.util.UUID
 
-fun articleFeedWebRoutes(service: ArticleFeedService?, access: AccessControl?, accounts: Accounts? = null): RoutingHttpHandler {
+fun articleFeedWebRoutes(service: ArticleFeedService?, access: AccessControl?, accounts: Accounts? = null, sharing: ArticleSharing? = null): RoutingHttpHandler {
     fun signedIn(request: Request, action: (Session, ArticleFeedService) -> Response): Response {
         val session = access?.session(request) ?: return Response(Status.UNAUTHORIZED).body("Sign in to read your feeds")
         if (service == null) return Response(Status.SERVICE_UNAVAILABLE).body("Article feeds are not configured")
@@ -58,7 +59,21 @@ fun articleFeedWebRoutes(service: ArticleFeedService?, access: AccessControl?, a
             })
         } },
         "/me/articles/{id}/discussion" bind Method.GET to { request -> signedIn(request) { session, feeds ->
-            discussion(request, session, feeds, accounts)
+            articleId(request)?.let { discussion(it, request, session, feeds, accounts, sharing) } ?: notFound()
+        } },
+        "/discussions" bind Method.GET to { request -> signedIn(request) { session, feeds ->
+            val article = try { request.query("url")?.let { sharing?.discussionArticle(session.accountId, it) } } catch (_: ArticleNotFound) { null }
+            if (article == null) notFound() else discussion(article.id, request, session, feeds, accounts, sharing)
+        } },
+        "/me/articles/{id}/share" bind Method.POST to { request -> signedIn(request) { session, _ ->
+            val id = articleId(request)
+            if (id == null || sharing == null) return@signedIn notFound()
+            val shared = try { sharing.share(session.accountId, id, PostVisibility.parse(formFields(request)["visibility"].orEmpty())) }
+            catch (_: ArticleNotFound) { return@signedIn notFound() }
+            catch (error: IllegalArgumentException) {
+                return@signedIn htmlPage("Check your post", "<section class=\"card\"><h1>Check your post</h1><p>${escapeHtml(error.message.orEmpty())}</p><a href=\"/me/articles/$id/discussion\">Back to discussion</a></section>", Status.BAD_REQUEST)
+            }
+            Response(Status.SEE_OTHER).header("Location", "/web/posts/${shared.id.value}")
         } },
         "/me/articles/{id}/discussion" bind Method.POST to { request -> signedIn(request) { session, feeds ->
             val id = articleId(request) ?: return@signedIn notFound()
@@ -85,8 +100,7 @@ private fun articleId(request: Request): UUID? = try { UUID.fromString(request.p
 
 private fun notFound() = htmlPage("Article not found", "<h1>Article not found</h1><a href=\"/me/articles\">Back to articles</a>", Status.NOT_FOUND)
 
-private fun discussion(request: Request, session: Session, feeds: ArticleFeedService, accounts: Accounts?): Response {
-    val id = articleId(request) ?: return notFound()
+private fun discussion(id: UUID, request: Request, session: Session, feeds: ArticleFeedService, accounts: Accounts?, sharing: ArticleSharing?): Response {
     val after = request.query("after")?.let(::decodeCommentCursor)
     val page = try { feeds.comments(session.accountId, id, after = after) } catch (_: ArticleNotFound) { return notFound() }
     return htmlPage("Discussion", buildString {
@@ -101,5 +115,6 @@ private fun discussion(request: Request, session: Session, feeds: ArticleFeedSer
             append("<nav class=\"pagination\" aria-label=\"Comment pagination\"><a class=\"button\" href=\"/me/articles/$id/discussion?after=$encoded\">Newer comments &rarr;</a></nav>")
         }
         append("<form class=\"add-comment card\" action=\"/me/articles/$id/discussion\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"comment-body\">Add a comment</label><textarea id=\"comment-body\" name=\"body\" rows=\"3\" maxlength=\"1000\" required></textarea><p><button class=\"button\" type=\"submit\">Post comment</button></p></form>")
+        if (sharing != null) append("<form class=\"share-article card\" action=\"/me/articles/$id/share\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><h2>Share to feed</h2>${audienceSelector("share-audience", PostVisibility.MEMBERS)}<p><button class=\"button\" type=\"submit\">Share to feed</button></p></form>")
     })
 }
