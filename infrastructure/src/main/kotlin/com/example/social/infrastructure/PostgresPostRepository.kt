@@ -104,45 +104,47 @@ class PostgresPostRepository(private val dataSource: DataSource, private val eve
 
     override fun save(post: Post): Post = saveWithImages(post, emptyList())
 
-    override fun saveWithImages(post: Post, images: List<PostImage>): Post = dataSource.connection.use { c ->
+    override fun saveWithImages(post: Post, images: List<PostImage>): Post {
         // image_count is derived from rows on load, so the aggregate's claim must be backed by real rows here.
         require(images.size == post.imageCount) { "Post image count must match its images" }
-        c.autoCommit = false
-        try {
-            c.prepareStatement("INSERT INTO posts(id, author_id, body, created_at, visibility, font, size) VALUES (?, ?, ?, ?, ?, ?, ?)").use {
-                it.setObject(1, post.id.value); it.setObject(2, post.authorId.value)
-                it.setString(3, post.body); it.setTimestamp(4, java.sql.Timestamp.from(post.createdAt))
-                it.setString(5, post.visibility.name.lowercase())
-                it.setString(6, post.font.name.lowercase()); it.setString(7, post.size.name.lowercase())
-                it.executeUpdate()
-            }
-            post.hashtags.forEach { tag ->
-                c.prepareStatement("INSERT INTO hashtags(name) VALUES (?) ON CONFLICT(name) DO NOTHING").use {
-                    it.setString(1, tag.value); it.executeUpdate()
-                }
-                c.prepareStatement("""
-                    INSERT INTO post_hashtags(post_id, hashtag_id)
-                    SELECT ?, id FROM hashtags WHERE name = ?
-                    ON CONFLICT DO NOTHING
-                """.trimIndent()).use {
-                    it.setObject(1, post.id.value); it.setString(2, tag.value); it.executeUpdate()
-                }
-            }
-            images.forEachIndexed { position, image ->
-                c.prepareStatement("INSERT INTO post_images(post_id, position, media_type, bytes) VALUES (?, ?, ?, ?)").use {
-                    it.setObject(1, post.id.value); it.setInt(2, position); it.setString(3, image.mediaType); it.setBytes(4, image.bytes)
+        dataSource.connection.use { c ->
+            c.autoCommit = false
+            try {
+                c.prepareStatement("INSERT INTO posts(id, author_id, body, created_at, visibility, font, size) VALUES (?, ?, ?, ?, ?, ?, ?)").use {
+                    it.setObject(1, post.id.value); it.setObject(2, post.authorId.value)
+                    it.setString(3, post.body); it.setTimestamp(4, java.sql.Timestamp.from(post.createdAt))
+                    it.setString(5, post.visibility.name.lowercase())
+                    it.setString(6, post.font.name.lowercase()); it.setString(7, post.size.name.lowercase())
                     it.executeUpdate()
                 }
+                post.hashtags.forEach { tag ->
+                    c.prepareStatement("INSERT INTO hashtags(name) VALUES (?) ON CONFLICT(name) DO NOTHING").use {
+                        it.setString(1, tag.value); it.executeUpdate()
+                    }
+                    c.prepareStatement("""
+                        INSERT INTO post_hashtags(post_id, hashtag_id)
+                        SELECT ?, id FROM hashtags WHERE name = ?
+                        ON CONFLICT DO NOTHING
+                    """.trimIndent()).use {
+                        it.setObject(1, post.id.value); it.setString(2, tag.value); it.executeUpdate()
+                    }
+                }
+                images.forEachIndexed { position, image ->
+                    c.prepareStatement("INSERT INTO post_images(post_id, position, media_type, bytes) VALUES (?, ?, ?, ?)").use {
+                        it.setObject(1, post.id.value); it.setInt(2, position); it.setString(3, image.mediaType); it.setBytes(4, image.bytes)
+                        it.executeUpdate()
+                    }
+                }
+                syncHashtags(c, post)
+                syncLikes(c, post)
+                syncComments(c, post.copy(comments = emptyList()), post)
+                c.commit()
+            } catch (e: Exception) {
+                c.rollback(); throw e
             }
-            syncHashtags(c, post)
-            syncLikes(c, post)
-            syncComments(c, post.copy(comments = emptyList()), post)
-            NotificationWriter.addNewPost(c, post.id)
-            c.commit()
-            post
-        } catch (e: Exception) {
-            c.rollback(); throw e
         }
+        events.publishCommitted(PostPublished(post.id))
+        return post
     }
 
     override fun find(id: PostId): Post? = dataSource.connection.use { load(it, id) }

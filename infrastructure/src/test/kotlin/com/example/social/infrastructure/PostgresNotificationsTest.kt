@@ -175,7 +175,7 @@ class PostgresNotificationsTest {
         assertEquals(listOf(NotificationKind.FOLLOW_REQUEST), notifications.list(author).map { it.kind })
     }
 
-    @Test fun `a failed new post notice rolls back the post and its images`() = withDatabase { ds ->
+    @Test fun `a failed new post notice keeps the post and its images without a new post notice`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
         val follower = Account(UserId.new(), "f@example.com", "Follower", null, true).also(accounts::create).id
@@ -188,11 +188,11 @@ class PostgresNotificationsTest {
         val posts = wiredPosts(ds)
         val post = Post.publish(author, "", imageCount = 1)
 
-        assertFails { posts.saveWithImages(post, listOf(PostImage("image/png", byteArrayOf(1)))) }
+        posts.saveWithImages(post, listOf(PostImage("image/png", byteArrayOf(1))))
 
-        assertNull(posts.find(post.id))
-        assertNull(posts.image(post.id, 0, author))
-        assertEquals(listOf(NotificationKind.FOLLOW_ACCEPTED), Notifications(PostgresNotifications(ds)).list(follower).map { it.kind })
+        assertNotNull(posts.find(post.id))
+        assertNotNull(posts.image(post.id, 0, author))
+        assertEquals(emptyList(), Notifications(PostgresNotifications(ds)).list(follower).filter { it.kind == NotificationKind.NEW_POST })
     }
 
     @Test fun `post notices follow current post visibility in both list and unread count`() = withDatabase { ds ->
