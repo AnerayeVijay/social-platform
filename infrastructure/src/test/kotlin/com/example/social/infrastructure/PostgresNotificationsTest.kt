@@ -545,6 +545,21 @@ class PostgresNotificationsTest {
         assertEquals(listOf<DomainEvent>(FollowRemoved(a, b)), seen)
     }
 
+    @Test fun `notices store the actor's display name when they are written`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
+        val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
+        FollowService(accounts, wiredFollows(ds)).request(a, b)
+
+        val stored = ds.connection.use { c ->
+            c.prepareStatement("SELECT actor_name FROM notifications WHERE recipient_id = ?").use { s ->
+                s.setObject(1, b.value)
+                s.executeQuery().use { r -> r.next(); r.getString(1) }
+            }
+        }
+        assertEquals("Ada", stored)
+    }
+
     @Test fun `a visibility change updates the stored visibility of the post's notices`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
