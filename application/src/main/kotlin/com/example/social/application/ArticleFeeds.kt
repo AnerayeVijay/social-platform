@@ -10,9 +10,14 @@ data class FeedEntry(val title: String, val url: String, val abstract: String, v
 
 fun interface ArticleFeedFetcher { fun fetch(url: String): List<FeedEntry> }
 
+/** RSS/Atom feed addresses advertised by the page at [address]; throws when the page cannot be fetched safely. */
+fun interface FeedDiscovery { fun discover(address: String): List<String> }
+
 data class FeedSource(
     val id: UUID, val owner: UserId, val name: String, val url: String, val createdAt: Instant,
-    val lastAttemptAt: Instant? = null, val lastSuccessAt: Instant? = null, val lastError: String? = null
+    val lastAttemptAt: Instant? = null, val lastSuccessAt: Instant? = null, val lastError: String? = null,
+    /** Articles are entered by hand; the source is never fetched. */
+    val manual: Boolean = false
 )
 
 interface ArticleFeeds {
@@ -53,7 +58,8 @@ class ArticleFeedService(
     private val now: () -> Instant = Instant::now,
     private val fetcher: ArticleFeedFetcher? = null,
     private val content: ArticleFeedContent? = null,
-    private val discussions: ArticleDiscussions? = null
+    private val discussions: ArticleDiscussions? = null,
+    private val resolver: FeedSourceResolver? = null
 ) {
     fun articles(owner: UserId, limit: Int = 20, before: ArticleCursor? = null): ArticlePage {
         require(limit in 1..100) { "limit must be between 1 and 100" }
@@ -61,7 +67,7 @@ class ArticleFeedService(
         val source = fetcher
         if (source != null) {
             val stopStartingAt = now().plus(REFRESH_BUDGET)
-            for (feed in feeds.list(owner)) {
+            for (feed in feeds.list(owner).filterNot { it.manual }) {
                 if (!now().isBefore(stopStartingAt)) break
                 refresh(store, source, feed)
             }
@@ -90,12 +96,30 @@ class ArticleFeedService(
 
     private fun store() = checkNotNull(discussions) { "Article discussions are not configured" }
 
+    /** Saves a hand entered article as a normal article of the member's own manual source called [sourceName]. */
+    fun addManualArticle(owner: UserId, sourceName: String, title: String, abstract: String, link: String) {
+        val cleanName = sourceName.trim()
+        val cleanTitle = title.trim()
+        val cleanAbstract = abstract.trim()
+        val cleanLink = link.trim()
+        require(cleanName.isNotEmpty() && cleanName.length <= MAX_NAME) { "Source name must contain 1 to $MAX_NAME characters" }
+        require(cleanTitle.isNotEmpty() && cleanTitle.length <= MAX_TITLE) { "Article title must contain 1 to $MAX_TITLE characters" }
+        require(cleanAbstract.length <= MAX_ABSTRACT) { "Abstract must be at most $MAX_ABSTRACT characters" }
+        require(cleanLink.length <= MAX_URL && isPublicWebUrl(cleanLink)) { "Article link must be an http(s) URL of at most $MAX_URL characters" }
+        val store = checkNotNull(content) { "Article content is not configured" }
+        val source = feeds.list(owner).firstOrNull { it.manual && it.name == cleanName } ?: run {
+            val id = UUID.randomUUID()
+            FeedSource(id, owner, cleanName, "manual:$id", now(), manual = true).also { require(feeds.add(it, MAX_SOURCES)) { "You can follow at most $MAX_SOURCES feeds" } }
+        }
+        store.storeEntries(owner, source.id, listOf(FeedEntry(cleanTitle, cleanLink, cleanAbstract, now())), now())
+    }
+
     fun add(owner: UserId, name: String, url: String): FeedSource {
         val cleanName = name.trim()
         val cleanUrl = url.trim()
         require(cleanName.isNotEmpty() && cleanName.length <= MAX_NAME) { "Feed name must contain 1 to $MAX_NAME characters" }
         require(cleanUrl.length <= MAX_URL && isPublicWebUrl(cleanUrl)) { "Feed URL must be an http(s) URL of at most $MAX_URL characters" }
-        val source = FeedSource(UUID.randomUUID(), owner, cleanName, cleanUrl, now())
+        val source = FeedSource(UUID.randomUUID(), owner, cleanName, resolver?.resolve(cleanUrl) ?: cleanUrl, now())
         require(feeds.add(source, MAX_SOURCES)) { "You can follow at most $MAX_SOURCES feeds" }
         return source
     }
@@ -108,7 +132,7 @@ class ArticleFeedService(
         uri.scheme?.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank() && uri.userInfo == null
     } catch (_: java.net.URISyntaxException) { false }
 
-    companion object { const val MAX_SOURCES = 20; const val MAX_NAME = 100; const val MAX_URL = 2048
+    companion object { const val MAX_SOURCES = 20; const val MAX_NAME = 100; const val MAX_URL = 2048; const val MAX_TITLE = 200; const val MAX_ABSTRACT = 600
         val REFRESH_AFTER: java.time.Duration = java.time.Duration.ofMinutes(15)
         val REFRESH_BUDGET: java.time.Duration = java.time.Duration.ofSeconds(10)
         const val REFRESH_FAILED = "This feed could not be refreshed" }
