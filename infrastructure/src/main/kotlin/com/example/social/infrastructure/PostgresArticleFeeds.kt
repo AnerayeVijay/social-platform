@@ -24,9 +24,9 @@ class PostgresArticleFeeds(private val dataSource: DataSource) : ArticleFeeds, A
             it.executeQuery().use { rows -> rows.next(); rows.getInt(1) }
         }
         if (count >= maxPerOwner) return@transaction false
-        connection.prepareStatement("INSERT INTO article_feed_sources(id,owner_id,name,url,created_at) VALUES (?,?,?,?,?)").use {
+        connection.prepareStatement("INSERT INTO article_feed_sources(id,owner_id,name,url,created_at,manual) VALUES (?,?,?,?,?,?)").use {
             it.setObject(1, source.id); it.setObject(2, source.owner.value)
-            it.setString(3, source.name); it.setString(4, source.url); it.setTimestamp(5, Timestamp.from(source.createdAt))
+            it.setString(3, source.name); it.setString(4, source.url); it.setTimestamp(5, Timestamp.from(source.createdAt)); it.setBoolean(6, source.manual)
             it.executeUpdate()
         }
         true
@@ -207,7 +207,7 @@ class PostgresArticleFeeds(private val dataSource: DataSource) : ArticleFeeds, A
     private fun ResultSet.source() = FeedSource(
         getObject("id", UUID::class.java), UserId(getObject("owner_id", UUID::class.java)), getString("name"), getString("url"),
         getTimestamp("created_at").toInstant(), getTimestamp("last_attempt_at")?.toInstant(),
-        getTimestamp("last_success_at")?.toInstant(), getString("last_error")
+        getTimestamp("last_success_at")?.toInstant(), getString("last_error"), getBoolean("manual")
     )
 
     private fun ResultSet.article() = FeedArticle(

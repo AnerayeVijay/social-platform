@@ -1,0 +1,1 @@
+ALTER TABLE article_feed_sources ADD COLUMN manual BOOLEAN NOT NULL DEFAULT FALSE;
