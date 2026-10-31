@@ -138,14 +138,14 @@ class MediaRoutesTest {
         val rows = mutableMapOf(root.id to root)
         val files = mutableMapOf<CommentId, PostImage>()
         val repository = object : CommentThreadRepository {
-            override fun get(postId: PostId, id: CommentId, viewer: UserId?) = rows[id]?.let { ThreadComment(it, 0, false, 0) }
-            override fun page(postId: PostId, parent: CommentId?, viewer: UserId?, limit: Int, after: CommentCursor?) = ThreadPage(emptyList(), null)
-            override fun append(postId: PostId, comment: Comment): Boolean = appendWithAttachment(postId, comment, null)
-            override fun appendWithAttachment(postId: PostId, comment: Comment, attachment: PostImage?): Boolean {
+            override fun get(post: PostId, id: CommentId, viewer: UserId?) = rows[id]?.let { ThreadComment(it, 0, false, 0) }
+            override fun page(post: PostId, parent: CommentId?, viewer: UserId?, limit: Int, after: CommentCursor?) = ThreadPage(emptyList(), null)
+            override fun append(post: PostId, comment: Comment): Boolean = appendWithAttachment(post, comment, null)
+            override fun appendWithAttachment(post: PostId, comment: Comment, attachment: PostImage?): Boolean {
                 rows[comment.id] = comment; attachment?.let { files[comment.id] = it }; return true
             }
             override fun attachment(post: PostId, id: CommentId, viewer: UserId?) = files[id]
-            override fun like(postId: PostId, id: CommentId, user: UserId, liked: Boolean) = true
+            override fun like(post: PostId, id: CommentId, user: UserId, liked: Boolean) = true
         }
         val app = commentRoutes(CommentThreads(repository), access)
         val base = "/api/posts/${post.value}/comments/${root.id.value}/replies"
@@ -184,10 +184,10 @@ class MediaRoutesTest {
     @Test fun `attachment over the per-type limit maps to 413 on api reply`() {
         val root = Comment(authorId = other, body = "Root")
         val repository = object : CommentThreadRepository {
-            override fun get(postId: PostId, id: CommentId, viewer: UserId?) = ThreadComment(root, 0, false, 0)
-            override fun page(postId: PostId, parent: CommentId?, viewer: UserId?, limit: Int, after: CommentCursor?) = ThreadPage(emptyList(), null)
-            override fun append(postId: PostId, comment: Comment) = true
-            override fun like(postId: PostId, id: CommentId, user: UserId, liked: Boolean) = true
+            override fun get(post: PostId, id: CommentId, viewer: UserId?) = ThreadComment(root, 0, false, 0)
+            override fun page(post: PostId, parent: CommentId?, viewer: UserId?, limit: Int, after: CommentCursor?) = ThreadPage(emptyList(), null)
+            override fun append(post: PostId, comment: Comment) = true
+            override fun like(post: PostId, id: CommentId, user: UserId, liked: Boolean) = true
         }
         val app = commentRoutes(CommentThreads(repository), access)
         val response = app(multipart("/api/posts/${PostId.new().value}/comments/${root.id.value}/replies", mapOf("body" to "x"), listOf(bigJpeg)))
@@ -204,10 +204,10 @@ class MediaRoutesTest {
     @Test fun `reply on an unreadable post is 404 without consuming the body`() {
         val repository = object : CommentThreadRepository {
             override fun readable(post: PostId, viewer: UserId?) = false
-            override fun get(postId: PostId, id: CommentId, viewer: UserId?): ThreadComment? = null
-            override fun page(postId: PostId, parent: CommentId?, viewer: UserId?, limit: Int, after: CommentCursor?) = ThreadPage(emptyList(), null)
-            override fun append(postId: PostId, comment: Comment) = true
-            override fun like(postId: PostId, id: CommentId, user: UserId, liked: Boolean) = true
+            override fun get(post: PostId, id: CommentId, viewer: UserId?): ThreadComment? = null
+            override fun page(post: PostId, parent: CommentId?, viewer: UserId?, limit: Int, after: CommentCursor?) = ThreadPage(emptyList(), null)
+            override fun append(post: PostId, comment: Comment) = true
+            override fun like(post: PostId, id: CommentId, user: UserId, liked: Boolean) = true
         }
         val app = commentRoutes(CommentThreads(repository), access)
         assertEquals(Status.NOT_FOUND, app(unreadable("/api/posts/${PostId.new().value}/comments/${UUID.randomUUID()}/replies")).status)

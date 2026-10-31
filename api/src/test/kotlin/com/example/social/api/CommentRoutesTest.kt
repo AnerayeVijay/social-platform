@@ -10,28 +10,28 @@ import kotlin.test.*
 
 class CommentRoutesTest {
     @Test fun `comment API supports authenticated replies and idempotent likes with viewer-aware pages`() {
-        val post = PostId.new()
+        val postId = PostId.new()
         val actor = UserId.new()
         val root = Comment(authorId = UserId.new(), body = "Root")
         val rows = mutableMapOf(root.id to root)
         val likes = mutableSetOf<Pair<CommentId, UserId>>()
         val repository = object : CommentThreadRepository {
-            override fun get(postId: PostId, id: CommentId, viewer: UserId?) = rows[id]?.takeIf { postId == post }?.let {
+            override fun get(post: PostId, id: CommentId, viewer: UserId?) = rows[id]?.takeIf { post == postId }?.let {
                 ThreadComment(it, likes.count { pair -> pair.first == id }.toLong(), id to viewer in likes, rows.values.count { reply -> reply.parentId == id }.toLong())
             }
-            override fun page(postId: PostId, parent: CommentId?, viewer: UserId?, limit: Int, after: CommentCursor?): ThreadPage {
+            override fun page(post: PostId, parent: CommentId?, viewer: UserId?, limit: Int, after: CommentCursor?): ThreadPage {
                 val comments = rows.values.filter { it.parentId == parent }.sortedBy { it.id.value.toString() }
                     .filter { after == null || it.id.value.toString() > after.id.value.toString() }
                 val page = comments.take(limit)
-                return ThreadPage(page.map { get(postId, it.id, viewer)!! }, if (comments.size > limit) page.last().let { CommentCursor(it.createdAt, it.id) } else null)
+                return ThreadPage(page.map { get(post, it.id, viewer)!! }, if (comments.size > limit) page.last().let { CommentCursor(it.createdAt, it.id) } else null)
             }
-            override fun append(postId: PostId, comment: Comment): Boolean {
-                if (postId != post || comment.parentId !in rows) return false
+            override fun append(post: PostId, comment: Comment): Boolean {
+                if (post != postId || comment.parentId !in rows) return false
                 rows[comment.id] = comment
                 return true
             }
-            override fun like(postId: PostId, id: CommentId, user: UserId, liked: Boolean): Boolean {
-                if (get(postId, id, user) == null) return false
+            override fun like(post: PostId, id: CommentId, user: UserId, liked: Boolean): Boolean {
+                if (get(post, id, user) == null) return false
                 if (liked) likes.add(id to user) else likes.remove(id to user)
                 return true
             }
@@ -44,7 +44,7 @@ class CommentRoutesTest {
         }, false)
         val app = commentRoutes(CommentThreads(repository), access)
         val mapper = jacksonObjectMapper()
-        val base = "/api/posts/${post.value}/comments/${root.id.value}"
+        val base = "/api/posts/${postId.value}/comments/${root.id.value}"
         fun call(method: Method, path: String, body: String = "") = app(Request(method, path).header("Authorization", "Bearer actor")
             .header("content-type", "application/json").body(body))
         assertEquals(Status.UNAUTHORIZED, app(Request(Method.POST, "$base/replies").body("{\"body\":\"Reply\"}")).status)
@@ -55,16 +55,16 @@ class CommentRoutesTest {
         assertEquals(actor.value.toString(), json["authorId"].asText())
         assertEquals(root.id.value.toString(), json["parentId"].asText())
         val replyId = json["id"].asText()
-        assertEquals(Status.CREATED, call(Method.POST, "/api/posts/${post.value}/comments/$replyId/replies", """{"body":"Nested"}""").status)
+        assertEquals(Status.CREATED, call(Method.POST, "/api/posts/${postId.value}/comments/$replyId/replies", """{"body":"Nested"}""").status)
         repeat(2) { assertEquals(Status.NO_CONTENT, call(Method.POST, "$base/likes").status) }
-        val rootPage = mapper.readTree(call(Method.GET, "/api/posts/${post.value}/comments").bodyString())["comments"][0]
+        val rootPage = mapper.readTree(call(Method.GET, "/api/posts/${postId.value}/comments").bodyString())["comments"][0]
         assertEquals(1, rootPage["likeCount"].asInt())
         assertTrue(rootPage["likedByViewer"].asBoolean())
         assertEquals(1, rootPage["replyCount"].asInt())
-        val anonymous = mapper.readTree(app(Request(Method.GET, "/api/posts/${post.value}/comments")).bodyString())["comments"][0]
+        val anonymous = mapper.readTree(app(Request(Method.GET, "/api/posts/${postId.value}/comments")).bodyString())["comments"][0]
         assertFalse(anonymous["likedByViewer"].asBoolean())
         repeat(2) { assertEquals(Status.NO_CONTENT, call(Method.DELETE, "$base/likes").status) }
-        assertEquals(0, mapper.readTree(call(Method.GET, "/api/posts/${post.value}/comments").bodyString())["comments"][0]["likeCount"].asInt())
+        assertEquals(0, mapper.readTree(call(Method.GET, "/api/posts/${postId.value}/comments").bodyString())["comments"][0]["likeCount"].asInt())
         call(Method.POST, "$base/replies", """{"body":"Another"}""")
         val first = mapper.readTree(call(Method.GET, "$base/replies?limit=1").bodyString())
         val cursor = java.net.URLEncoder.encode(first["next"].asText(), Charsets.UTF_8)
@@ -76,6 +76,6 @@ class CommentRoutesTest {
         assertEquals(Status.BAD_REQUEST, call(Method.POST, "$base/replies", """{"body":" "}""").status)
         assertEquals(Status.BAD_REQUEST, call(Method.POST, "$base/replies", "not json").status)
         assertEquals(Status.NOT_FOUND, call(Method.POST, "/api/posts/${PostId.new().value}/comments/${root.id.value}/likes").status)
-        assertEquals(Status.NOT_FOUND, call(Method.GET, "/api/posts/${post.value}/comments/${CommentId.new().value}/replies").status)
+        assertEquals(Status.NOT_FOUND, call(Method.GET, "/api/posts/${postId.value}/comments/${CommentId.new().value}/replies").status)
     }
 }
