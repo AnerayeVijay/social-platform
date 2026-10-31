@@ -82,8 +82,8 @@ internal object NotificationWriter {
     /** Fans a new post out to the author's current accepted followers who may see it; no later backfill. */
     fun addNewPost(c: Connection, post: PostId) {
         c.prepareStatement("""
-            INSERT INTO notifications(recipient_id, actor_id, kind, post_id, created_at)
-            SELECT f.follower_id, p.author_id, 'new_post', p.id, p.created_at FROM posts p
+            INSERT INTO notifications(recipient_id, actor_id, kind, post_id, created_at, post_author_id, post_visibility)
+            SELECT f.follower_id, p.author_id, 'new_post', p.id, p.created_at, p.author_id, p.visibility FROM posts p
             JOIN member_follows f ON f.followed_id = p.author_id AND f.status = 'accepted'
             WHERE p.id = ? AND p.visibility IN ('public', 'members')
             ON CONFLICT DO NOTHING
@@ -91,8 +91,8 @@ internal object NotificationWriter {
     }
     fun addPostLike(c: Connection, post: PostId, actor: UserId) {
         c.prepareStatement("""
-            INSERT INTO notifications(recipient_id, actor_id, kind, post_id, created_at)
-            SELECT p.author_id, actor.id, 'post_like', p.id, now() FROM posts p
+            INSERT INTO notifications(recipient_id, actor_id, kind, post_id, created_at, post_author_id, post_visibility)
+            SELECT p.author_id, actor.id, 'post_like', p.id, now(), p.author_id, p.visibility FROM posts p
             JOIN accounts author ON author.id = p.author_id JOIN accounts actor ON actor.id = ?
             WHERE p.id = ? AND p.author_id <> actor.id
               AND EXISTS (SELECT 1 FROM post_likes l WHERE l.post_id = p.id AND l.user_id = actor.id)
@@ -108,8 +108,8 @@ internal object NotificationWriter {
     /** Notifies the post owner of a comment or reply on their post; skips own comments and account-less legacy ids. */
     fun addPostComment(c: Connection, comment: CommentId) {
         c.prepareStatement("""
-            INSERT INTO notifications(recipient_id, actor_id, kind, post_id, comment_id, created_at)
-            SELECT p.author_id, actor.id, 'comment', p.id, cm.id, now() FROM comments cm JOIN posts p ON p.id = cm.post_id
+            INSERT INTO notifications(recipient_id, actor_id, kind, post_id, comment_id, created_at, post_author_id, post_visibility)
+            SELECT p.author_id, actor.id, 'comment', p.id, cm.id, now(), p.author_id, p.visibility FROM comments cm JOIN posts p ON p.id = cm.post_id
             JOIN accounts owner ON owner.id = p.author_id JOIN accounts actor ON actor.id = cm.author_id
             WHERE cm.id = ? AND p.author_id <> actor.id
             ON CONFLICT DO NOTHING

@@ -11,6 +11,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 import java.util.concurrent.Callable
 import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.logging.Handler
 import java.util.logging.Level
@@ -542,6 +543,25 @@ class PostgresNotificationsTest {
         follows.unfollow(a, b)
 
         assertEquals(listOf<DomainEvent>(FollowRemoved(a, b)), seen)
+    }
+
+    @Test fun `new post notices store the post's author and visibility`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
+        val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
+        val follows = FollowService(accounts, wiredFollows(ds))
+        follows.request(a, b)
+        follows.accept(b, a)
+
+        wiredPosts(ds).save(Post.publish(b, "Hello followers"))
+
+        val stored = ds.connection.use { c ->
+            c.prepareStatement("SELECT post_author_id, post_visibility FROM notifications WHERE recipient_id = ? AND kind = 'new_post'").use { s ->
+                s.setObject(1, a.value)
+                s.executeQuery().use { r -> r.next(); r.getObject(1, UUID::class.java) to r.getString(2) }
+            }
+        }
+        assertEquals(b.value to "public", stored)
     }
 
     @Test fun `history pages newest first by id without gaps for tied timestamps`() = withDatabase { ds ->
