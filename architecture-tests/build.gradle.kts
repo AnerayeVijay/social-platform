@@ -1,0 +1,9 @@
+plugins {
+    kotlin("jvm")
+}
+
+dependencies {
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.5.1")
+    testImplementation(kotlin("test"))
+    testImplementation(project(":shared-kernel"))
+}
