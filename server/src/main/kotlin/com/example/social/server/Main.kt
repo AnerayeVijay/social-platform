@@ -36,7 +36,7 @@ fun main() {
     val links = SmtpLinks(baseUrl, System.getenv("SMTP_HOST") ?: "localhost", (System.getenv("SMTP_PORT") ?: "1025").toInt(),
         System.getenv("SMTP_FROM") ?: "openly@localhost", System.getenv("SMTP_USER"), System.getenv("SMTP_PASSWORD"),
         (System.getenv("SMTP_STARTTLS") ?: "false").toBooleanStrict())
-    val accountService = AccountService(accounts, Pbkdf2Passwords(), ::secureToken, links::send, revokeSessions = sessions::deleteForAccount)
+    val accountService = AccountService(accounts, Pbkdf2Passwords(), ::secureToken, links::send, revokeSessions = sessions::deleteForAccount, events = events)
     val queries = PostgresPostQueries(dataSource)
     val follows = FollowService(accounts, PostgresFollows(dataSource, events))
     val hashtagFollows = HashtagFollowService(PostgresHashtagFollows(dataSource))

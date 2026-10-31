@@ -338,7 +338,7 @@ class PostgresNotificationsTest {
             CREATE TRIGGER fail_notice BEFORE INSERT OR DELETE ON notifications FOR EACH ROW EXECUTE FUNCTION fail_notice();
         """) }
         val records = mutableListOf<LogRecord>()
-        val logger = Logger.getLogger(NotificationHandlers::class.java.name)
+        val logger = Logger.getLogger(EventBus::class.java.name)
         val capture = object : Handler() {
             override fun publish(record: LogRecord) { records += record }
             override fun flush() {}

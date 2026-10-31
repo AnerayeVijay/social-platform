@@ -1,6 +1,7 @@
 package com.example.social.infrastructure
 
 import com.example.social.sharedkernel.EventBus
+import com.example.social.sharedkernel.publishCommitted
 
 import com.example.social.application.*
 import com.example.social.domain.*

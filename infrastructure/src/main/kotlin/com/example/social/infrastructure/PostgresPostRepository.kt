@@ -5,6 +5,7 @@ import com.example.social.application.PostRepository
 import com.example.social.domain.*
 import com.example.social.sharedkernel.DomainEvent
 import com.example.social.sharedkernel.EventBus
+import com.example.social.sharedkernel.publishCommitted
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import java.sql.Connection

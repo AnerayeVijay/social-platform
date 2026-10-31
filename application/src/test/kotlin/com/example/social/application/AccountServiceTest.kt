@@ -1,6 +1,9 @@
 package com.example.social.application
 
+import com.example.social.domain.AccountRenamed
 import com.example.social.domain.UserId
+import com.example.social.sharedkernel.DomainEvent
+import com.example.social.sharedkernel.EventBus
 import java.time.Instant
 import kotlin.test.*
 
@@ -16,6 +19,23 @@ class AccountServiceTest {
         service.rename(account.id, "  Alicia  ")
         assertEquals(account.copy(displayName = "Alicia"), store.byId(account.id))
         assertFailsWith<IllegalArgumentException> { service.rename(account.id, " ") }
+    }
+
+    @Test fun `renaming publishes the new display name for the account`() {
+        val store = MemoryAccounts()
+        val account = Account(UserId.new(), "alice@example.com", "Alice", "hash", true)
+        store.create(account)
+        val events = EventBus()
+        val seen = mutableListOf<DomainEvent>()
+        events.subscribe(AccountRenamed::class) { seen += it }
+        val service = AccountService(store, object : Passwords {
+            override fun hash(password: String) = password
+            override fun matches(password: String, hash: String) = password == hash
+        }, { "token" }, { _, _, _ -> }, events = events)
+
+        service.rename(account.id, "  Alicia  ")
+
+        assertEquals(listOf<DomainEvent>(AccountRenamed(account.id, "Alicia")), seen)
     }
 
     @Test fun `password reset expires and cannot be reused`() {

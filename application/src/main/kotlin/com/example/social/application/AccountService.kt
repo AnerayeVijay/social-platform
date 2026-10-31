@@ -1,6 +1,9 @@
 package com.example.social.application
 
+import com.example.social.domain.AccountRenamed
 import com.example.social.domain.UserId
+import com.example.social.sharedkernel.EventBus
+import com.example.social.sharedkernel.publishCommitted
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.Locale
@@ -49,7 +52,8 @@ class AccountService(
     private val newToken: () -> String,
     private val sendLink: (email: String, purpose: String, token: String) -> Unit,
     private val now: () -> Instant = Instant::now,
-    private val revokeSessions: (UserId) -> Unit = {}
+    private val revokeSessions: (UserId) -> Unit = {},
+    private val events: EventBus = EventBus(),
 ) {
     fun register(email: String, password: String, displayName: String) {
         val normalized = normalizeEmail(email)
@@ -77,7 +81,9 @@ class AccountService(
 
     fun rename(id: UserId, displayName: String) {
         val account = accounts.byId(id) ?: throw AuthenticationFailed()
-        accounts.update(account.copy(displayName = displayName.trim()))
+        val renamed = account.copy(displayName = displayName.trim())
+        accounts.update(renamed)
+        events.publishCommitted(AccountRenamed(id, renamed.displayName))
     }
 
     fun resetPassword(token: String, password: String) {

@@ -7,6 +7,7 @@ import com.example.social.domain.FollowRequested
 import com.example.social.domain.UserId
 import com.example.social.notifications.NotificationKind
 import com.example.social.sharedkernel.EventBus
+import com.example.social.sharedkernel.publishCommitted
 import java.sql.Connection
 import java.sql.Timestamp
 import java.time.Instant

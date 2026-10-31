@@ -1,6 +1,10 @@
 package com.example.social.sharedkernel
 
+import java.util.logging.Level
+import java.util.logging.Logger
 import kotlin.reflect.KClass
+
+private val log = Logger.getLogger(EventBus::class.java.name)
 
 interface DomainEvent
 
@@ -16,4 +20,9 @@ class EventBus {
             runCatching { handler(event) }.exceptionOrNull()
         }
     }
+}
+
+/** Call after the change has committed: a failing subscriber is logged and never undoes the committed change. */
+fun EventBus.publishCommitted(event: DomainEvent) {
+    publish(event).forEach { log.log(Level.WARNING, "Subscriber failed for $event", it) }
 }

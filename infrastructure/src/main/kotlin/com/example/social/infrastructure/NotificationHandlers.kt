@@ -10,13 +10,8 @@ import com.example.social.domain.PostPublished
 import com.example.social.domain.PostUnliked
 import com.example.social.domain.PostVisibilityChanged
 import com.example.social.notifications.NotificationKind
-import com.example.social.sharedkernel.DomainEvent
 import com.example.social.sharedkernel.EventBus
-import java.util.logging.Level
-import java.util.logging.Logger
 import javax.sql.DataSource
-
-private val log = Logger.getLogger(NotificationHandlers::class.java.name)
 
 class NotificationHandlers(private val dataSource: DataSource) {
     fun register(events: EventBus) {
@@ -52,9 +47,4 @@ class NotificationHandlers(private val dataSource: DataSource) {
             }
         }
     }
-}
-
-/** Call after the change has committed: a failing subscriber is logged and never undoes the committed change. */
-internal fun EventBus.publishCommitted(event: DomainEvent) {
-    publish(event).forEach { log.log(Level.WARNING, "Notice failed for $event", it) }
 }
