@@ -1,5 +1,7 @@
 package com.example.social.infrastructure
 
+import com.example.social.sharedkernel.EventBus
+
 import com.example.social.application.*
 import com.example.social.application.TrendingHashtag
 import com.example.social.domain.*
@@ -125,7 +127,7 @@ class PostgresHashtagQueriesTest {
                 jdbcUrl = database.jdbcUrl; username = database.username; password = database.password
             }).use { dataSource ->
                 Flyway.configure().dataSource(dataSource).load().migrate()
-                block(PostgresPostRepository(dataSource), PostgresPostQueries(dataSource), dataSource)
+                block(PostgresPostRepository(dataSource, EventBus()), PostgresPostQueries(dataSource), dataSource)
             }
         }
     }

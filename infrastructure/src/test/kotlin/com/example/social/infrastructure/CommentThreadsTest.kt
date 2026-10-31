@@ -1,5 +1,7 @@
 package com.example.social.infrastructure
 
+import com.example.social.sharedkernel.EventBus
+
 import com.example.social.application.*
 import com.example.social.domain.*
 import com.zaxxer.hikari.*
@@ -16,7 +18,7 @@ class CommentThreadsTest {
                 jdbcUrl = database.jdbcUrl; username = database.username; password = database.password
             }).use { ds ->
                 Flyway.configure().dataSource(ds).load().migrate()
-                val posts = PostgresPostRepository(ds)
+                val posts = PostgresPostRepository(ds, EventBus())
                 val author = UserId.new()
                 val other = UserId.new()
                 val post = posts.save(Post.publish(author, "Conversation"))

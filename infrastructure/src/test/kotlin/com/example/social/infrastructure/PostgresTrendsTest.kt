@@ -1,5 +1,7 @@
 package com.example.social.infrastructure
 
+import com.example.social.sharedkernel.EventBus
+
 import com.example.social.application.*
 import com.example.social.domain.*
 import com.zaxxer.hikari.*
@@ -17,7 +19,7 @@ class PostgresTrendsTest {
                 Flyway.configure().dataSource(ds).load().migrate()
                 val accounts = PostgresAccounts(ds)
                 val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create).id
-                val service = PostService(PostgresPostRepository(ds))
+                val service = PostService(PostgresPostRepository(ds, EventBus()))
                 val queries = PostgresPostQueries(ds)
                 service.publish(owner, "One #kotlin #ai", PostVisibility.PUBLIC)
                 service.publish(owner, "Two #kotlin", PostVisibility.PUBLIC)

@@ -1,5 +1,7 @@
 package com.example.social.infrastructure
 
+import com.example.social.sharedkernel.EventBus
+
 import com.example.social.application.*
 import com.example.social.domain.*
 import com.zaxxer.hikari.*
@@ -21,7 +23,7 @@ class PostAudienceTest {
                 val follower = member("follower@example.com")
                 val stranger = member("stranger@example.com")
                 val follows = FollowService(accounts, PostgresFollows(ds))
-                val repository = PostgresPostRepository(ds)
+                val repository = PostgresPostRepository(ds, EventBus())
                 val service = PostService(repository)
                 val queries = PostgresPostQueries(ds)
                 val public = service.publish(owner, "Public #audience", PostVisibility.PUBLIC)

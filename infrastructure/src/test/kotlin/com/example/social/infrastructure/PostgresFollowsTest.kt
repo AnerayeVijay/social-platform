@@ -1,5 +1,7 @@
 package com.example.social.infrastructure
 
+import com.example.social.sharedkernel.EventBus
+
 import com.example.social.application.*
 import com.example.social.domain.*
 import com.zaxxer.hikari.*
@@ -73,7 +75,7 @@ class PostgresFollowsTest {
                 }
                 follows.request(a, b)
                 follows.accept(b, a)
-                val repository = PostgresPostRepository(ds)
+                val repository = PostgresPostRepository(ds, EventBus())
                 val time = Instant.parse("2026-01-01T00:00:00Z")
                 val ids = (1..3).map { PostId.parse("00000000-0000-0000-0000-00000000000$it") }
                 ids.forEach { repository.save(Post.publish(b, "Tied post", time).copy(id = it)) }
@@ -104,7 +106,7 @@ class PostgresFollowsTest {
                 follows.request(viewer, approved)
                 follows.accept(approved, viewer)
                 follows.request(viewer, pending)
-                val service = PostService(PostgresPostRepository(ds))
+                val service = PostService(PostgresPostRepository(ds, EventBus()))
                 val posts = listOf(viewer, approved, pending, other, approved).map { service.publish(it, "Post #kotlin") }
                 val queries = PostgresPostQueries(ds)
                 val first = queries.followingFeed(viewer, 1)

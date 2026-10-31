@@ -3,6 +3,7 @@ package com.example.social.infrastructure
 import com.example.social.application.*
 import com.example.social.domain.*
 import com.example.social.notifications.*
+import com.example.social.sharedkernel.EventBus
 import com.zaxxer.hikari.*
 import org.flywaydb.core.Flyway
 import org.testcontainers.containers.PostgreSQLContainer
@@ -142,7 +143,7 @@ class PostgresNotificationsTest {
         follows.request(a, b)
         follows.accept(b, a)
 
-        val post = PostgresPostRepository(ds).save(Post.publish(b, "Hello followers"))
+        val post = wiredPosts(ds).save(Post.publish(b, "Hello followers"))
 
         assertEquals(NotificationKind.NEW_POST to (b to post.id), notifications.list(a).first().let { it.kind to (it.actor to it.post) })
         assertEquals(2L, notifications.unreadCount(a))
@@ -156,7 +157,7 @@ class PostgresNotificationsTest {
         val stranger = Account(UserId.new(), "s@example.com", "Stranger", null, true).also(accounts::create).id
         val follows = FollowService(accounts, PostgresFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         follows.request(follower, author); follows.accept(author, follower)
         follows.request(pending, author)
 
@@ -180,7 +181,7 @@ class PostgresNotificationsTest {
             CREATE FUNCTION fail_notice() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'} BEGIN RAISE EXCEPTION 'notice write failed'; END ${'$'}${'$'};
             CREATE TRIGGER fail_notice BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION fail_notice();
         """) }
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         val post = Post.publish(author, "", imageCount = 1)
 
         assertFails { posts.saveWithImages(post, listOf(PostImage("image/png", byteArrayOf(1)))) }
@@ -196,7 +197,7 @@ class PostgresNotificationsTest {
         val follower = Account(UserId.new(), "f@example.com", "Follower", null, true).also(accounts::create).id
         val follows = FollowService(accounts, PostgresFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         follows.request(follower, author); follows.accept(author, follower)
         val public = posts.save(Post.publish(author, "Public"))
         val members = posts.save(Post.publish(author, "Members").copy(visibility = PostVisibility.MEMBERS))
@@ -221,7 +222,7 @@ class PostgresNotificationsTest {
         val accounts = PostgresAccounts(ds)
         val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
         val fan = Account(UserId.new(), "fan@example.com", "Fan", null, true).also(accounts::create).id
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         val notifications = Notifications(PostgresNotifications(ds))
         val post = posts.save(Post.publish(author, "Like me"))
         fun likeNotices() = notifications.list(author).filter { it.kind == NotificationKind.POST_LIKE }.map { it.actor to it.post }
@@ -232,11 +233,25 @@ class PostgresNotificationsTest {
         assertEquals(1L, notifications.unreadCount(author))
     }
 
+    @Test fun `a like reaches its author through the event bus once the like is committed`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
+        val fan = Account(UserId.new(), "fan@example.com", "Fan", null, true).also(accounts::create).id
+        val events = EventBus().also { NotificationHandlers(ds).register(it) }
+        val posts = PostgresPostRepository(ds, events)
+        val notifications = Notifications(PostgresNotifications(ds))
+        val post = posts.save(Post.publish(author, "Like me"))
+
+        assertTrue(posts.setLike(post.id, fan, true))
+
+        assertEquals(listOf(fan to post.id), notifications.list(author).filter { it.kind == NotificationKind.POST_LIKE }.map { it.actor to it.post })
+    }
+
     @Test fun `only real like transitions change notices and self likes stay silent`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
         val fan = Account(UserId.new(), "fan@example.com", "Fan", null, true).also(accounts::create).id
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         val notifications = Notifications(PostgresNotifications(ds))
         val post = posts.save(Post.publish(author, "Like me"))
         fun likeNotices() = notifications.list(author).filter { it.kind == NotificationKind.POST_LIKE }
@@ -259,11 +274,11 @@ class PostgresNotificationsTest {
         assertEquals(1L, notifications.unreadCount(author))
     }
 
-    @Test fun `a failed like notice write rolls back the like and a failed withdrawal keeps it`() = withDatabase { ds ->
+    @Test fun `a failed like notice write leaves the like in place without a notice`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
         val fan = Account(UserId.new(), "fan@example.com", "Fan", null, true).also(accounts::create).id
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         val notifications = Notifications(PostgresNotifications(ds))
         val post = posts.save(Post.publish(author, "Like me"))
         ds.connection.use { it.createStatement().execute("""
@@ -271,12 +286,29 @@ class PostgresNotificationsTest {
             CREATE TRIGGER fail_notice BEFORE INSERT OR DELETE ON notifications FOR EACH ROW EXECUTE FUNCTION fail_notice();
         """) }
 
-        assertFails { posts.setLike(post.id, fan, true) }
-        assertEquals(emptySet(), posts.find(post.id)!!.likes)
+        assertTrue(posts.setLike(post.id, fan, true))
+
+        assertEquals(setOf(fan), posts.find(post.id)!!.likes)
+        assertEquals(0L, notifications.unreadCount(author))
+    }
+
+    @Test fun `a failed withdrawal keeps the like and its notice`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
+        val fan = Account(UserId.new(), "fan@example.com", "Fan", null, true).also(accounts::create).id
+        val posts = wiredPosts(ds)
+        val notifications = Notifications(PostgresNotifications(ds))
+        val post = posts.save(Post.publish(author, "Like me"))
+        ds.connection.use { it.createStatement().execute("""
+            CREATE FUNCTION fail_notice() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'} BEGIN RAISE EXCEPTION 'notice write failed'; END ${'$'}${'$'};
+            CREATE TRIGGER fail_notice BEFORE INSERT OR DELETE ON notifications FOR EACH ROW EXECUTE FUNCTION fail_notice();
+        """) }
 
         ds.connection.use { it.createStatement().execute("ALTER TABLE notifications DISABLE TRIGGER fail_notice") }
-        posts.setLike(post.id, fan, true)
+        assertTrue(posts.setLike(post.id, fan, true))
         ds.connection.use { it.createStatement().execute("ALTER TABLE notifications ENABLE TRIGGER fail_notice") }
+        assertEquals(1L, notifications.unreadCount(author))
+
         assertFails { posts.setLike(post.id, fan, false) }
         assertEquals(setOf(fan), posts.find(post.id)!!.likes)
         assertEquals(1L, notifications.unreadCount(author))
@@ -286,7 +318,7 @@ class PostgresNotificationsTest {
         val accounts = PostgresAccounts(ds)
         val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
         val fan = Account(UserId.new(), "fan@example.com", "Fan", null, true).also(accounts::create).id
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         val notifications = Notifications(PostgresNotifications(ds))
         val post = posts.save(Post.publish(author, "Race me"))
         fun race(first: Boolean, second: Boolean) {
@@ -315,7 +347,7 @@ class PostgresNotificationsTest {
         val accounts = PostgresAccounts(ds)
         val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
         val stranger = Account(UserId.new(), "s@example.com", "Stranger", null, true).also(accounts::create).id
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         val post = posts.save(Post.publish(author, "Members only").copy(visibility = PostVisibility.MEMBERS))
 
         assertFalse(posts.setLike(post.id, stranger, true))
@@ -328,7 +360,7 @@ class PostgresNotificationsTest {
         val accounts = PostgresAccounts(ds)
         val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create).id
         val reader = Account(UserId.new(), "reader@example.com", "Reader", null, true).also(accounts::create).id
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         val notifications = Notifications(PostgresNotifications(ds))
         val post = posts.save(Post.publish(owner, "Talk to me"))
         val comment = Comment(authorId = reader, body = "Hello")
@@ -345,7 +377,7 @@ class PostgresNotificationsTest {
         val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create).id
         val reader = Account(UserId.new(), "reader@example.com", "Reader", null, true).also(accounts::create).id
         val other = Account(UserId.new(), "other@example.com", "Other", null, true).also(accounts::create).id
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         val threads = PostgresCommentThreads(ds)
         val notifications = Notifications(PostgresNotifications(ds))
         val post = posts.save(Post.publish(owner, "Talk to me"))
@@ -367,7 +399,7 @@ class PostgresNotificationsTest {
         val accounts = PostgresAccounts(ds)
         val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create).id
         val stranger = Account(UserId.new(), "s@example.com", "Stranger", null, true).also(accounts::create).id
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         val threads = PostgresCommentThreads(ds)
         val post = posts.save(Post.publish(owner, "Members only").copy(visibility = PostVisibility.MEMBERS))
         val ownComment = Comment(authorId = owner, body = "Mine")
@@ -384,7 +416,7 @@ class PostgresNotificationsTest {
         val accounts = PostgresAccounts(ds)
         val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create).id
         val reader = Account(UserId.new(), "reader@example.com", "Reader", null, true).also(accounts::create).id
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         val threads = PostgresCommentThreads(ds)
         val post = posts.save(Post.publish(owner, "Talk to me"))
         val ownComment = Comment(authorId = owner, body = "Mine")
@@ -470,7 +502,7 @@ class PostgresNotificationsTest {
         val follower = Account(UserId.new(), "f@example.com", "Follower", null, true).also(accounts::create).id
         val follows = FollowService(accounts, PostgresFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
-        val posts = PostgresPostRepository(ds)
+        val posts = wiredPosts(ds)
         follows.request(follower, author); follows.accept(author, follower)
         posts.save(Post.publish(author, "Shown"))
         val hidden = posts.save(Post.publish(author, "Hidden later"))
@@ -510,6 +542,8 @@ class PostgresNotificationsTest {
         assertEquals(listOf(late to false, early to true), notifications.list(owner).map { it.actor to it.read })
         assertEquals(1L, notifications.unreadCount(owner))
     }
+
+    private fun wiredPosts(ds: HikariDataSource) = PostgresPostRepository(ds, EventBus().also { NotificationHandlers(ds).register(it) })
 
     private fun withDatabase(block: (HikariDataSource) -> Unit) {
         PostgreSQLContainer<Nothing>("postgres:17-alpine").use { database ->

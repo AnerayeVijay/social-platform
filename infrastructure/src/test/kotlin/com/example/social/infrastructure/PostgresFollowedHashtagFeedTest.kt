@@ -1,5 +1,7 @@
 package com.example.social.infrastructure
 
+import com.example.social.sharedkernel.EventBus
+
 import com.example.social.application.*
 import com.example.social.domain.*
 import com.zaxxer.hikari.*
@@ -18,7 +20,7 @@ class PostgresFollowedHashtagFeedTest {
                 val accounts = PostgresAccounts(ds)
                 val viewer = Account(UserId.new(), "viewer@example.com", "Viewer", null, true).also(accounts::create).id
                 val stranger = Account(UserId.new(), "stranger@example.com", "Stranger", null, true).also(accounts::create).id
-                val posts = PostgresPostRepository(ds)
+                val posts = PostgresPostRepository(ds, EventBus())
                 val follows = PostgresHashtagFollows(ds)
                 val queries = PostgresPostQueries(ds)
                 follows.add(viewer, Hashtag("kotlin"))

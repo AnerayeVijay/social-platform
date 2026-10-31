@@ -13,6 +13,7 @@ import com.example.social.application.*
 import com.example.social.http.*
 import com.example.social.infrastructure.*
 import com.example.social.notifications.Notifications
+import com.example.social.sharedkernel.EventBus
 import com.example.social.web.*
 import org.flywaydb.core.Flyway
 import org.http4k.routing.routes
@@ -25,7 +26,8 @@ fun main() {
     // Profile/background and legacy image uploads share a decoder gate; original media uses withMediaUpload.
     val imageGate = ImageProcessingGate()
     val rasterImages = RasterMemberImages()
-    val service = PostService(PostgresPostRepository(dataSource), rasterImages, imageGate)
+    val events = EventBus().also { NotificationHandlers(dataSource).register(it) }
+    val service = PostService(PostgresPostRepository(dataSource, events), rasterImages, imageGate)
     val accounts = PostgresAccounts(dataSource)
     val sessions = PostgresSessions(dataSource)
     val secureCookies = (System.getenv("COOKIE_SECURE") ?: "false").toBooleanStrict()

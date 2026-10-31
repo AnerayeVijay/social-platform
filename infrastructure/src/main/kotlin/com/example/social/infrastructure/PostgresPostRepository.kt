@@ -3,6 +3,7 @@ package com.example.social.infrastructure
 import com.example.social.application.MediaContent
 import com.example.social.application.PostRepository
 import com.example.social.domain.*
+import com.example.social.sharedkernel.EventBus
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import java.sql.Connection
@@ -10,7 +11,7 @@ import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
 
-class PostgresPostRepository(private val dataSource: DataSource) : PostRepository {
+class PostgresPostRepository(private val dataSource: DataSource, private val events: EventBus) : PostRepository {
     override fun readable(id: PostId, viewer: UserId?): Boolean = dataSource.connection.use { c ->
         c.prepareStatement("SELECT 1 FROM posts p WHERE p.id=? AND ${postVisibilitySql()}").use {
             it.setObject(1, id.value); it.setObject(2, viewer?.value); it.executeQuery().use { rows -> rows.next() }
@@ -42,24 +43,28 @@ class PostgresPostRepository(private val dataSource: DataSource) : PostRepositor
             it.setObject(1, id.value); it.setObject(2, owner.value); it.executeUpdate() == 1
         }
     }
-    override fun setLike(id: PostId, user: UserId, liked: Boolean): Boolean = dataSource.connection.use { c ->
-        c.autoCommit = false
-        try {
-            if (liked) {
-                val inserted = c.prepareStatement("INSERT INTO post_likes(post_id,user_id) SELECT p.id, ? FROM posts p WHERE p.id=? AND ${postVisibilitySql()} ON CONFLICT DO NOTHING").use {
-                    it.setObject(1, user.value); it.setObject(2, id.value); it.setObject(3, user.value); it.executeUpdate() == 1
+    override fun setLike(id: PostId, user: UserId, liked: Boolean): Boolean {
+        var newLike = false
+        val visible = dataSource.connection.use { c ->
+            c.autoCommit = false
+            try {
+                if (liked) {
+                    newLike = c.prepareStatement("INSERT INTO post_likes(post_id,user_id) SELECT p.id, ? FROM posts p WHERE p.id=? AND ${postVisibilitySql()} ON CONFLICT DO NOTHING").use {
+                        it.setObject(1, user.value); it.setObject(2, id.value); it.setObject(3, user.value); it.executeUpdate() == 1
+                    }
+                } else {
+                    val removed = c.prepareStatement("DELETE FROM post_likes l USING posts p WHERE p.id=l.post_id AND l.post_id=? AND l.user_id=? AND ${postVisibilitySql()}").use {
+                        it.setObject(1, id.value); it.setObject(2, user.value); it.setObject(3, user.value); it.executeUpdate() == 1
+                    }
+                    if (removed) NotificationWriter.removePostLike(c, id, user)
                 }
-                if (inserted) NotificationWriter.addPostLike(c, id, user)
-            } else {
-                val removed = c.prepareStatement("DELETE FROM post_likes l USING posts p WHERE p.id=l.post_id AND l.post_id=? AND l.user_id=? AND ${postVisibilitySql()}").use {
-                    it.setObject(1, id.value); it.setObject(2, user.value); it.setObject(3, user.value); it.executeUpdate() == 1
-                }
-                if (removed) NotificationWriter.removePostLike(c, id, user)
-            }
-            c.prepareStatement("SELECT 1 FROM posts p WHERE p.id=? AND ${postVisibilitySql()}").use {
-                it.setObject(1, id.value); it.setObject(2, user.value); it.executeQuery().use { rows -> rows.next() }
-            }.also { c.commit() }
-        } catch (e: Exception) { c.rollback(); throw e }
+                c.prepareStatement("SELECT 1 FROM posts p WHERE p.id=? AND ${postVisibilitySql()}").use {
+                    it.setObject(1, id.value); it.setObject(2, user.value); it.executeQuery().use { rows -> rows.next() }
+                }.also { c.commit() }
+            } catch (e: Exception) { c.rollback(); throw e }
+        }
+        if (newLike) events.publish(PostLiked(id, user))
+        return visible
     }
 
     override fun appendComment(id: PostId, comment: Comment): Boolean {

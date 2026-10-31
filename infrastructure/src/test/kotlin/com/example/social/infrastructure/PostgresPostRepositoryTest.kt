@@ -1,5 +1,7 @@
 package com.example.social.infrastructure
 
+import com.example.social.sharedkernel.EventBus
+
 import com.example.social.domain.*
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
@@ -22,7 +24,7 @@ class PostgresPostRepositoryTest {
                 jdbcUrl = database.jdbcUrl; username = database.username; password = database.password
             }).use { dataSource ->
                 Flyway.configure().dataSource(dataSource).load().migrate()
-                val repository = PostgresPostRepository(dataSource)
+                val repository = PostgresPostRepository(dataSource, EventBus())
                 val post = repository.save(Post.publish(UserId.new(), "hello"))
                 val users = (1..12).map { UserId.new() }
                 Executors.newFixedThreadPool(4).use { executor ->
@@ -44,7 +46,7 @@ class PostgresPostRepositoryTest {
                 jdbcUrl = database.jdbcUrl; username = database.username; password = database.password
             }).use { dataSource ->
                 Flyway.configure().dataSource(dataSource).load().migrate()
-                val repository = PostgresPostRepository(dataSource)
+                val repository = PostgresPostRepository(dataSource, EventBus())
                 val owner = UserId.new()
                 val post = repository.save(Post.publish(owner, "hello #old"))
                 repository.update(post.id) { it.withBody("hello #new") }
@@ -73,7 +75,7 @@ class PostgresPostRepositoryTest {
                 jdbcUrl = database.jdbcUrl; username = database.username; password = database.password
             }).use { dataSource ->
                 Flyway.configure().dataSource(dataSource).load().migrate()
-                val repository = PostgresPostRepository(dataSource)
+                val repository = PostgresPostRepository(dataSource, EventBus())
                 val post = repository.save(Post.publish(UserId.new(), "hello"))
                 val first = UserId.new()
                 val second = UserId.new()
@@ -99,7 +101,7 @@ class PostgresPostRepositoryTest {
                 password = database.password
             }).use { dataSource ->
                 Flyway.configure().dataSource(dataSource).load().migrate()
-                val repository = PostgresPostRepository(dataSource)
+                val repository = PostgresPostRepository(dataSource, EventBus())
                 val viewer = UserId.new()
                 val now = Instant.parse("2026-01-01T12:00:00Z")
                 val post = repository.save(Post.publish(viewer, "#Kotlin", now).like(viewer)
@@ -129,7 +131,7 @@ class PostgresPostRepositoryTest {
                 password = database.password
             }).use { dataSource ->
                 Flyway.configure().dataSource(dataSource).load().migrate()
-                val repository = PostgresPostRepository(dataSource)
+                val repository = PostgresPostRepository(dataSource, EventBus())
                 val now = Instant.parse("2026-01-01T12:00:00Z")
                 val posts = (1..3).map { repository.save(Post.publish(UserId.new(), "Post $it", now)) }
                 val queries = PostgresPostQueries(dataSource)
@@ -151,7 +153,7 @@ class PostgresPostRepositoryTest {
                 password = database.password
             }).use { dataSource ->
                 Flyway.configure().dataSource(dataSource).load().migrate()
-                val repository = PostgresPostRepository(dataSource)
+                val repository = PostgresPostRepository(dataSource, EventBus())
                 val now = Instant.parse("2026-01-01T12:00:00Z")
                 val post = Post.publish(UserId.new(), "Hello #Kotlin", now)
                     .like(UserId.new())
@@ -181,7 +183,7 @@ class PostgresPostRepositoryTest {
                     }
                 }
                 Flyway.configure().dataSource(dataSource).load().migrate()
-                val repository = PostgresPostRepository(dataSource)
+                val repository = PostgresPostRepository(dataSource, EventBus())
                 val queries = PostgresPostQueries(dataSource)
                 assertEquals(PostFont.SANS to PostSize.NORMAL, repository.find(legacy)!!.let { it.font to it.size })
                 val styled = repository.save(Post.publish(author, "styled").copy(font = PostFont.SERIF, size = PostSize.LARGE))
@@ -199,7 +201,7 @@ class PostgresPostRepositoryTest {
                 jdbcUrl = database.jdbcUrl; username = database.username; password = database.password
             }).use { dataSource ->
                 Flyway.configure().dataSource(dataSource).load().migrate()
-                val repository = PostgresPostRepository(dataSource)
+                val repository = PostgresPostRepository(dataSource, EventBus())
                 val images = listOf(PostImage("image/png", byteArrayOf(1, 2)), PostImage("image/jpeg", byteArrayOf(3)))
                 val post = Post.publish(UserId.new(), "", imageCount = 2)
                 repository.saveWithImages(post, images)
@@ -218,7 +220,7 @@ class PostgresPostRepositoryTest {
                 jdbcUrl = database.jdbcUrl; username = database.username; password = database.password
             }).use { dataSource ->
                 Flyway.configure().dataSource(dataSource).load().migrate()
-                val repository = PostgresPostRepository(dataSource)
+                val repository = PostgresPostRepository(dataSource, EventBus())
                 val png = PostImage("image/png", byteArrayOf(1))
                 val spoofed = Post.publish(UserId.new(), "", imageCount = 2)
                 assertFailsWith<IllegalArgumentException> { repository.saveWithImages(spoofed, listOf(png)) }
@@ -243,7 +245,7 @@ class PostgresPostRepositoryTest {
                 fun member(email: String) = com.example.social.application.Account(UserId.new(), email, email, null, true).also(accounts::create).id
                 val owner = member("owner@example.com"); val follower = member("follower@example.com"); val stranger = member("stranger@example.com")
                 val follows = com.example.social.application.FollowService(accounts, PostgresFollows(dataSource))
-                val repository = PostgresPostRepository(dataSource)
+                val repository = PostgresPostRepository(dataSource, EventBus())
                 val png = PostImage("image/png", byteArrayOf(7))
                 val post = repository.saveWithImages(Post.publish(owner, "", imageCount = 1).copy(visibility = PostVisibility.MEMBERS), listOf(png))
                 fun sees(viewer: UserId?) = repository.image(post.id, 0, viewer)?.bytes?.toList()
@@ -273,7 +275,7 @@ class PostgresPostRepositoryTest {
                 jdbcUrl = database.jdbcUrl; username = database.username; password = database.password
             }).use { dataSource ->
                 Flyway.configure().dataSource(dataSource).load().migrate()
-                val repository = PostgresPostRepository(dataSource)
+                val repository = PostgresPostRepository(dataSource, EventBus())
                 val queries = PostgresPostQueries(dataSource)
                 val author = UserId.new()
                 val png = PostImage("image/jpeg", byteArrayOf(1))

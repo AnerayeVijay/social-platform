@@ -1,5 +1,7 @@
 package com.example.social.infrastructure
 
+import com.example.social.sharedkernel.EventBus
+
 import com.example.social.application.*
 import com.example.social.domain.*
 import com.zaxxer.hikari.*
@@ -19,7 +21,7 @@ class PostAuthorFeedTest {
                 fun member(email: String) = Account(UserId.new(), email, email, null, true).also(accounts::create).id
                 val owner = member("owner@example.com")
                 val other = member("other@example.com")
-                val service = PostService(PostgresPostRepository(ds))
+                val service = PostService(PostgresPostRepository(ds, EventBus()))
                 val queries = PostgresPostQueries(ds)
                 val public = service.publish(owner, "Public", PostVisibility.PUBLIC)
                 val members = service.publish(owner, "Members", PostVisibility.MEMBERS)

@@ -1,5 +1,7 @@
 package com.example.social.infrastructure
 
+import com.example.social.sharedkernel.EventBus
+
 import com.example.social.application.*
 import com.example.social.domain.*
 import java.sql.Timestamp
@@ -8,7 +10,7 @@ import java.util.UUID
 import javax.sql.DataSource
 
 class PostgresCommentThreads(private val dataSource: DataSource) : CommentThreadRepository {
-    override fun readable(post: PostId, viewer: UserId?): Boolean = PostgresPostRepository(dataSource).readable(post, viewer)
+    override fun readable(post: PostId, viewer: UserId?): Boolean = PostgresPostRepository(dataSource, EventBus()).readable(post, viewer)
     override fun get(post: PostId, id: CommentId, viewer: UserId?): ThreadComment? =
         select(post, viewer, "c.id = ?", listOf(id.value), 1).firstOrNull()
 

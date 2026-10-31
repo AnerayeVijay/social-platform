@@ -1,5 +1,7 @@
 package com.example.social.infrastructure
 
+import com.example.social.sharedkernel.EventBus
+
 import com.example.social.application.*
 import com.example.social.domain.*
 import com.zaxxer.hikari.*
@@ -17,7 +19,7 @@ class MediaAttachmentsTest {
     }
 
     @Test fun `posts persist any original type with bytes in order and expose types without bytes`() = withDb { ds ->
-        val repository = PostgresPostRepository(ds)
+        val repository = PostgresPostRepository(ds, EventBus())
         val author = UserId.new()
         val media = listOf(PostImage("video/mp4", byteArrayOf(1, 2)), PostImage("application/pdf", byteArrayOf(3)),
             PostImage("image/jpeg", byteArrayOf(4)), PostImage("audio/mpeg", byteArrayOf(5)))
@@ -31,7 +33,7 @@ class MediaAttachmentsTest {
     }
 
     @Test fun `legacy jpeg post keeps working`() = withDb { ds ->
-        val repository = PostgresPostRepository(ds)
+        val repository = PostgresPostRepository(ds, EventBus())
         val post = Post.publish(UserId.new(), "legacy", imageCount = 1)
         repository.saveWithImages(post, listOf(PostImage("image/jpeg", byteArrayOf(9))))
         assertEquals(listOf("image/jpeg"), repository.find(post.id)!!.mediaTypes)
@@ -39,7 +41,7 @@ class MediaAttachmentsTest {
     }
 
     @Test fun `comment and reply media persist atomically and appear in every projection`() = withDb { ds ->
-        val repository = PostgresPostRepository(ds)
+        val repository = PostgresPostRepository(ds, EventBus())
         val threads = PostgresCommentThreads(ds)
         val author = UserId.new()
         val post = repository.save(Post.publish(author, "hello"))
@@ -55,7 +57,7 @@ class MediaAttachmentsTest {
     }
 
     @Test fun `comment media respects post match and audience and refuses unbacked metadata`() = withDb { ds ->
-        val repository = PostgresPostRepository(ds)
+        val repository = PostgresPostRepository(ds, EventBus())
         val threads = PostgresCommentThreads(ds)
         val owner = UserId.new()
         val outsider = UserId.new()

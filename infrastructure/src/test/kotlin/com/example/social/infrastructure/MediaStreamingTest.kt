@@ -1,5 +1,7 @@
 package com.example.social.infrastructure
 
+import com.example.social.sharedkernel.EventBus
+
 import com.example.social.domain.*
 import com.zaxxer.hikari.*
 import org.flywaydb.core.Flyway
@@ -19,7 +21,7 @@ class MediaStreamingTest {
     private fun media(size: Int) = ByteArray(size) { (it * 31 + 7).toByte() }
 
     @Test fun `post media is read lazily so revoked visibility stops the stream`() = withDb { ds ->
-        val repository = PostgresPostRepository(ds)
+        val repository = PostgresPostRepository(ds, EventBus())
         val owner = UserId.new()
         val post = Post.publish(owner, "", imageCount = 1)
         repository.saveWithImages(post, listOf(PostImage("video/mp4", media(10))))
@@ -29,7 +31,7 @@ class MediaStreamingTest {
     }
 
     @Test fun `post media ranges return exact slices across chunk boundaries`() = withDb { ds ->
-        val repository = PostgresPostRepository(ds)
+        val repository = PostgresPostRepository(ds, EventBus())
         val bytes = media(MEDIA_CHUNK_BYTES * 2 + 123)
         val post = Post.publish(UserId.new(), "", imageCount = 1)
         repository.saveWithImages(post, listOf(PostImage("audio/mpeg", bytes)))
@@ -50,7 +52,7 @@ class MediaStreamingTest {
     }
 
     @Test fun `closed or shrunken streams fail rather than read on`() = withDb { ds ->
-        val repository = PostgresPostRepository(ds)
+        val repository = PostgresPostRepository(ds, EventBus())
         val bytes = media(MEDIA_CHUNK_BYTES + 10)
         val post = Post.publish(UserId.new(), "", imageCount = 1)
         repository.saveWithImages(post, listOf(PostImage("video/mp4", bytes)))
@@ -65,7 +67,7 @@ class MediaStreamingTest {
     }
 
     @Test fun `comment and reply media stream with post match and audience enforced`() = withDb { ds ->
-        val repository = PostgresPostRepository(ds)
+        val repository = PostgresPostRepository(ds, EventBus())
         val threads = PostgresCommentThreads(ds)
         val owner = UserId.new()
         val follower = UserId.new()
@@ -102,7 +104,7 @@ class MediaStreamingTest {
     }
 
     @Test fun `post media is hidden from outsiders and wrong positions`() = withDb { ds ->
-        val repository = PostgresPostRepository(ds)
+        val repository = PostgresPostRepository(ds, EventBus())
         val owner = UserId.new()
         val post = Post.publish(owner, "", imageCount = 1).copy(visibility = PostVisibility.PRIVATE)
         repository.saveWithImages(post, listOf(PostImage("image/png", media(3))))

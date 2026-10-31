@@ -5,6 +5,7 @@ dependencies {
     implementation(project(":application"))
     implementation(project(":infrastructure"))
     implementation(project(":notifications"))
+    implementation(project(":shared-kernel"))
     implementation(project(":http-common"))
     implementation(project(":api"))
     implementation(project(":web"))
