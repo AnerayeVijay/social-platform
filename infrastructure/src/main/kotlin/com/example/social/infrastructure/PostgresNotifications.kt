@@ -52,8 +52,8 @@ class PostgresNotifications(private val dataSource: DataSource) : NotificationSt
         }
 
     private companion object {
-        /** Binds recipient twice: post notices show only while the recipient can currently see the post. */
-        val VISIBLE_TO_RECIPIENT = "LEFT JOIN posts p ON p.id = n.post_id WHERE n.recipient_id = ? AND (n.post_id IS NULL OR ${postVisibilitySql()})"
+        /** Binds recipient twice: post notices show to their author, or while the stored visibility still lets followers see the post. */
+        val VISIBLE_TO_RECIPIENT = "WHERE n.recipient_id = ? AND (n.post_id IS NULL OR n.post_author_id = ? OR n.post_visibility IN ('public', 'members'))"
     }
 }
 
