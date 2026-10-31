@@ -2,6 +2,8 @@ package com.example.social.web
 
 import com.example.social.application.*
 import com.example.social.http.AccessControl
+import com.example.social.http.decodeCommentCursor
+import com.example.social.http.encodeCommentCursor
 import com.example.social.http.formFields
 import org.http4k.core.*
 import org.http4k.routing.*
@@ -10,7 +12,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 import java.util.UUID
 
-fun articleFeedWebRoutes(service: ArticleFeedService?, access: AccessControl?): RoutingHttpHandler {
+fun articleFeedWebRoutes(service: ArticleFeedService?, access: AccessControl?, accounts: Accounts? = null): RoutingHttpHandler {
     fun signedIn(request: Request, action: (Session, ArticleFeedService) -> Response): Response {
         val session = access?.session(request) ?: return Response(Status.UNAUTHORIZED).body("Sign in to read your feeds")
         if (service == null) return Response(Status.SERVICE_UNAVAILABLE).body("Article feeds are not configured")
@@ -47,13 +49,25 @@ fun articleFeedWebRoutes(service: ArticleFeedService?, access: AccessControl?): 
                 }
                 if (page.articles.isEmpty() && sources.isNotEmpty()) append("<section class=\"card empty\"><h2>No articles yet</h2><p>Check that your sources provide RSS or Atom articles with original links.</p></section>")
                 page.articles.forEach { article ->
-                    append("<article class=\"card feed-article\"><header><span class=\"article-source\" translate=\"no\">${escapeHtml(article.sourceName)}</span> · <time datetime=\"${article.publishedAt}\">${article.publishedAt}</time></header><h2 translate=\"no\">${escapeHtml(article.title.ifBlank { "Untitled article" })}</h2><p class=\"post-body article-abstract\" translate=\"no\">${escapeHtml(article.abstract.ifBlank { "No abstract provided by this source." })}</p><a class=\"read-article\" href=\"${escapeHtml(article.url)}\" rel=\"noopener noreferrer\">Read original article &rarr;</a></article>")
+                    append("<article class=\"card feed-article\"><header><span class=\"article-source\" translate=\"no\">${escapeHtml(article.sourceName)}</span> · <time datetime=\"${article.publishedAt}\">${article.publishedAt}</time></header><h2 translate=\"no\">${escapeHtml(article.title.ifBlank { "Untitled article" })}</h2><p class=\"post-body article-abstract\" translate=\"no\">${escapeHtml(article.abstract.ifBlank { "No abstract provided by this source." })}</p><a class=\"read-article\" href=\"${escapeHtml(article.url)}\" rel=\"noopener noreferrer\">Read original article &rarr;</a> <a class=\"article-discussion\" href=\"/me/articles/${article.id}/discussion\">Discussion</a></article>")
                 }
                 page.next?.let { cursor ->
                     val encoded = URLEncoder.encode("${cursor.publishedAt}|${cursor.id}", UTF_8)
                     append("<nav class=\"pagination\" aria-label=\"Article pagination\"><a class=\"button\" href=\"/me/articles?before=$encoded\">Older articles &rarr;</a></nav>")
                 }
             })
+        } },
+        "/me/articles/{id}/discussion" bind Method.GET to { request -> signedIn(request) { session, feeds ->
+            discussion(request, session, feeds, accounts)
+        } },
+        "/me/articles/{id}/discussion" bind Method.POST to { request -> signedIn(request) { session, feeds ->
+            val id = articleId(request) ?: return@signedIn notFound()
+            try { feeds.comment(session.accountId, id, formFields(request)["body"].orEmpty()) }
+            catch (_: ArticleNotFound) { return@signedIn notFound() }
+            catch (_: IllegalArgumentException) {
+                return@signedIn htmlPage("Check your comment", "<section class=\"card\"><h1>Check your comment</h1><p>Write between 1 and 1000 characters.</p><a href=\"/me/articles/$id/discussion\">Back to discussion</a></section>", Status.BAD_REQUEST)
+            }
+            Response(Status.SEE_OTHER).header("Location", "/me/articles/$id/discussion")
         } },
         "/me/feeds" bind Method.POST to { request -> signedIn(request) { session, feeds ->
             val fields = formFields(request)
@@ -65,4 +79,27 @@ fun articleFeedWebRoutes(service: ArticleFeedService?, access: AccessControl?): 
             else htmlPage("Feed not found", "<h1>Feed not found</h1><a href=\"/me/articles\">Back to articles</a>", Status.NOT_FOUND)
         } }
     )
+}
+
+private fun articleId(request: Request): UUID? = try { UUID.fromString(request.path("id")) } catch (_: IllegalArgumentException) { null }
+
+private fun notFound() = htmlPage("Article not found", "<h1>Article not found</h1><a href=\"/me/articles\">Back to articles</a>", Status.NOT_FOUND)
+
+private fun discussion(request: Request, session: Session, feeds: ArticleFeedService, accounts: Accounts?): Response {
+    val id = articleId(request) ?: return notFound()
+    val after = request.query("after")?.let(::decodeCommentCursor)
+    val page = try { feeds.comments(session.accountId, id, after = after) } catch (_: ArticleNotFound) { return notFound() }
+    return htmlPage("Discussion", buildString {
+        append("<section class=\"intro\"><h1>Discussion</h1><p><a href=\"/me/articles\">&larr; Back to News &amp; Articles</a></p></section>")
+        if (page.comments.isEmpty()) append("<section class=\"card empty\"><p>No comments yet. Start the discussion.</p></section>")
+        page.comments.forEach { comment ->
+            val author = accounts?.byId(comment.authorId)
+            append("<article class=\"card article-comment\"><header><a href=\"/profiles/${comment.authorId.value}\"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong></a> · <time datetime=\"${comment.createdAt}\">${comment.createdAt}</time></header><p class=\"comment-body\">${escapeHtml(comment.body)}</p></article>")
+        }
+        page.next?.let { cursor ->
+            val encoded = URLEncoder.encode(encodeCommentCursor(cursor), UTF_8)
+            append("<nav class=\"pagination\" aria-label=\"Comment pagination\"><a class=\"button\" href=\"/me/articles/$id/discussion?after=$encoded\">Newer comments &rarr;</a></nav>")
+        }
+        append("<form class=\"add-comment card\" action=\"/me/articles/$id/discussion\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"comment-body\">Add a comment</label><textarea id=\"comment-body\" name=\"body\" rows=\"3\" maxlength=\"1000\" required></textarea><p><button class=\"button\" type=\"submit\">Post comment</button></p></form>")
+    })
 }
