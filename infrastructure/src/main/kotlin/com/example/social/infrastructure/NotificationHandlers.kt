@@ -1,5 +1,6 @@
 package com.example.social.infrastructure
 
+import com.example.social.domain.AccountRenamed
 import com.example.social.domain.CommentAdded
 import com.example.social.domain.FollowAccepted
 import com.example.social.domain.FollowRequested
@@ -29,6 +30,9 @@ class NotificationHandlers(private val dataSource: DataSource) {
         }
         events.subscribe(FollowRemoved::class) { event ->
             dataSource.connection.use { c -> NotificationWriter.removePostNoticesFrom(c, event.follower, event.followed) }
+        }
+        events.subscribe(AccountRenamed::class) { event ->
+            dataSource.connection.use { c -> NotificationWriter.updateActorName(c, event.account, event.displayName) }
         }
         events.subscribe(CommentAdded::class) { event ->
             dataSource.connection.use { c -> NotificationWriter.addPostComment(c, event.comment) }

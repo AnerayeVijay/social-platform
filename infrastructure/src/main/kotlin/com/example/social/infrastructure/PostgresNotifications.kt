@@ -41,8 +41,9 @@ class PostgresNotifications(private val dataSource: DataSource) : NotificationSt
     }
 
     private fun select(c: Connection, recipient: UserId, tail: String, bind: (java.sql.PreparedStatement) -> Unit): List<Notification> =
-        c.prepareStatement("SELECT n.id, n.kind, n.actor_id, a.display_name, n.read_at, n.created_at, n.post_id, n.comment_id FROM notifications n " +
-            "JOIN accounts a ON a.id = n.actor_id $VISIBLE_TO_RECIPIENT $tail").use { s ->
+        c.prepareStatement("SELECT n.id, n.kind, n.actor_id, n.actor_name, n.read_at, n.created_at, n.post_id, n.comment_id FROM notifications n " +
+            "$VISIBLE_TO_RECIPIENT $tail").use { s ->
+
             s.setObject(1, recipient.value); s.setObject(2, recipient.value); bind(s)
             s.executeQuery().use { r -> buildList { while (r.next()) add(Notification(
                 r.getLong(1), NotificationKind.valueOf(r.getString(2).uppercase()), UserId(r.getObject(3, UUID::class.java)),
@@ -122,6 +123,12 @@ internal object NotificationWriter {
     fun removePostNoticesFrom(c: Connection, follower: UserId, followed: UserId) {
         c.prepareStatement("DELETE FROM notifications WHERE recipient_id = ? AND post_author_id = ?").use { s ->
             s.setObject(1, follower.value); s.setObject(2, followed.value); s.executeUpdate()
+        }
+    }
+    /** Keeps the stored actor name of a member's notices in step with a rename. */
+    fun updateActorName(c: Connection, account: UserId, displayName: String) {
+        c.prepareStatement("UPDATE notifications SET actor_name = ? WHERE actor_id = ?").use { s ->
+            s.setString(1, displayName); s.setObject(2, account.value); s.executeUpdate()
         }
     }
     /** Notifies the post owner of a comment or reply on their post; skips own comments and account-less legacy ids. */

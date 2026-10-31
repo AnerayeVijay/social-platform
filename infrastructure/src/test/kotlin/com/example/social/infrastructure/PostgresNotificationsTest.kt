@@ -560,6 +560,28 @@ class PostgresNotificationsTest {
         assertEquals("Ada", stored)
     }
 
+    @Test fun `renaming a member updates the name stored on their notices`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
+        val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
+        FollowService(accounts, wiredFollows(ds)).request(a, b)
+        val events = EventBus().also { NotificationHandlers(ds).register(it) }
+        val passwords = object : Passwords {
+            override fun hash(password: String) = password
+            override fun matches(password: String, hash: String) = password == hash
+        }
+
+        AccountService(accounts, passwords, { "token" }, { _, _, _ -> }, events = events).rename(a, "Ada L")
+
+        val stored = ds.connection.use { c ->
+            c.prepareStatement("SELECT actor_name FROM notifications WHERE recipient_id = ?").use { s ->
+                s.setObject(1, b.value)
+                s.executeQuery().use { r -> r.next(); r.getString(1) }
+            }
+        }
+        assertEquals("Ada L", stored)
+    }
+
     @Test fun `a visibility change updates the stored visibility of the post's notices`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
@@ -728,7 +750,7 @@ class PostgresNotificationsTest {
 
         ds.connection.use { pending ->
             pending.autoCommit = false
-            pending.prepareStatement("INSERT INTO notifications(recipient_id, actor_id, kind, created_at) VALUES (?, ?, 'follow_request', now())").use {
+            pending.prepareStatement("INSERT INTO notifications(recipient_id, actor_id, kind, created_at, actor_name) VALUES (?, ?, 'follow_request', now(), 'Late')").use {
                 it.setObject(1, owner.value); it.setObject(2, late.value); it.executeUpdate()
             }
             Executors.newSingleThreadExecutor().use { worker ->
