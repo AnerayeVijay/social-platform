@@ -148,12 +148,32 @@ class PostgresArticleFeeds(private val dataSource: DataSource) : ArticleFeeds, A
         true
     }
 
-    /** The article's URL, only when it belongs to a source owned by [viewer]. */
+    /** Rewrites stored thread keys to [articleThreadKey], merging threads that collide into the earliest one. Idempotent. */
+    fun normalizeThreadKeys() = transaction { connection ->
+        connection.createStatement().use { it.execute("LOCK TABLE article_threads, article_comments IN SHARE ROW EXCLUSIVE MODE") }
+        val threads = connection.prepareStatement("SELECT id,url FROM article_threads ORDER BY created_at,id").use {
+            it.executeQuery().use { rows -> buildList { while (rows.next()) add(rows.getObject(1, UUID::class.java) to rows.getString(2)) } }
+        }
+        threads.groupBy { (_, url) -> articleThreadKey(url) }.forEach { (key, group) ->
+            val (keeper, keeperUrl) = group.first()
+            group.drop(1).forEach { (duplicate, _) ->
+                connection.prepareStatement("UPDATE article_comments SET thread_id=? WHERE thread_id=?").use {
+                    it.setObject(1, keeper); it.setObject(2, duplicate); it.executeUpdate()
+                }
+                connection.prepareStatement("DELETE FROM article_threads WHERE id=?").use { it.setObject(1, duplicate); it.executeUpdate() }
+            }
+            if (keeperUrl != key) connection.prepareStatement("UPDATE article_threads SET url=? WHERE id=?").use {
+                it.setString(1, key); it.setObject(2, keeper); it.executeUpdate()
+            }
+        }
+    }
+
+    /** The article's thread key, only when it belongs to a source owned by [viewer]. */
     private fun Connection.visibleUrl(viewer: UserId, articleId: UUID): String? = prepareStatement(
         "SELECT a.url FROM feed_articles a JOIN article_feed_sources s ON s.id=a.source_id WHERE a.id=? AND s.owner_id=?"
     ).use {
         it.setObject(1, articleId); it.setObject(2, viewer.value)
-        it.executeQuery().use { rows -> if (rows.next()) rows.getString(1) else null }
+        it.executeQuery().use { rows -> if (rows.next()) articleThreadKey(rows.getString(1)) else null }
     }
 
     private fun <T> transaction(action: (Connection) -> T): T = dataSource.connection.use { connection ->
