@@ -95,12 +95,14 @@ internal object NotificationWriter {
             SELECT p.author_id, actor.id, 'post_like', p.id, now() FROM posts p
             JOIN accounts author ON author.id = p.author_id JOIN accounts actor ON actor.id = ?
             WHERE p.id = ? AND p.author_id <> actor.id
+              AND EXISTS (SELECT 1 FROM post_likes l WHERE l.post_id = p.id AND l.user_id = actor.id)
             ON CONFLICT DO NOTHING
         """.trimIndent()).use { s -> s.setObject(1, actor.value); s.setObject(2, post.value); s.executeUpdate() }
     }
+    /** Withdraws the notice only while the like is really gone, so a re-like made meanwhile keeps its notice. */
     fun removePostLike(c: Connection, post: PostId, actor: UserId) {
-        c.prepareStatement("DELETE FROM notifications WHERE kind = 'post_like' AND post_id = ? AND actor_id = ?").use { s ->
-            s.setObject(1, post.value); s.setObject(2, actor.value); s.executeUpdate()
+        c.prepareStatement("DELETE FROM notifications WHERE kind = 'post_like' AND post_id = ? AND actor_id = ? AND NOT EXISTS (SELECT 1 FROM post_likes WHERE post_id = ? AND user_id = ?)").use { s ->
+            s.setObject(1, post.value); s.setObject(2, actor.value); s.setObject(3, post.value); s.setObject(4, actor.value); s.executeUpdate()
         }
     }
     /** Notifies the post owner of a comment or reply on their post; skips own comments and account-less legacy ids. */

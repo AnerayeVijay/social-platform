@@ -5,6 +5,7 @@ import com.example.social.domain.FollowAccepted
 import com.example.social.domain.FollowRequested
 import com.example.social.domain.PostLiked
 import com.example.social.domain.PostPublished
+import com.example.social.domain.PostUnliked
 import com.example.social.notifications.NotificationKind
 import com.example.social.sharedkernel.DomainEvent
 import com.example.social.sharedkernel.EventBus
@@ -18,6 +19,9 @@ class NotificationHandlers(private val dataSource: DataSource) {
     fun register(events: EventBus) {
         events.subscribe(PostLiked::class) { event ->
             dataSource.connection.use { c -> NotificationWriter.addPostLike(c, event.post, event.actor) }
+        }
+        events.subscribe(PostUnliked::class) { event ->
+            dataSource.connection.use { c -> NotificationWriter.removePostLike(c, event.post, event.actor) }
         }
         events.subscribe(CommentAdded::class) { event ->
             dataSource.connection.use { c -> NotificationWriter.addPostComment(c, event.comment) }

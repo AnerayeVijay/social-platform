@@ -3,6 +3,7 @@ package com.example.social.infrastructure
 import com.example.social.application.MediaContent
 import com.example.social.application.PostRepository
 import com.example.social.domain.*
+import com.example.social.sharedkernel.DomainEvent
 import com.example.social.sharedkernel.EventBus
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
@@ -44,26 +45,27 @@ class PostgresPostRepository(private val dataSource: DataSource, private val eve
         }
     }
     override fun setLike(id: PostId, user: UserId, liked: Boolean): Boolean {
-        var newLike = false
+        var change: DomainEvent? = null
         val visible = dataSource.connection.use { c ->
             c.autoCommit = false
             try {
                 if (liked) {
-                    newLike = c.prepareStatement("INSERT INTO post_likes(post_id,user_id) SELECT p.id, ? FROM posts p WHERE p.id=? AND ${postVisibilitySql()} ON CONFLICT DO NOTHING").use {
+                    val inserted = c.prepareStatement("INSERT INTO post_likes(post_id,user_id) SELECT p.id, ? FROM posts p WHERE p.id=? AND ${postVisibilitySql()} ON CONFLICT DO NOTHING").use {
                         it.setObject(1, user.value); it.setObject(2, id.value); it.setObject(3, user.value); it.executeUpdate() == 1
                     }
+                    if (inserted) change = PostLiked(id, user)
                 } else {
                     val removed = c.prepareStatement("DELETE FROM post_likes l USING posts p WHERE p.id=l.post_id AND l.post_id=? AND l.user_id=? AND ${postVisibilitySql()}").use {
                         it.setObject(1, id.value); it.setObject(2, user.value); it.setObject(3, user.value); it.executeUpdate() == 1
                     }
-                    if (removed) NotificationWriter.removePostLike(c, id, user)
+                    if (removed) change = PostUnliked(id, user)
                 }
                 c.prepareStatement("SELECT 1 FROM posts p WHERE p.id=? AND ${postVisibilitySql()}").use {
                     it.setObject(1, id.value); it.setObject(2, user.value); it.executeQuery().use { rows -> rows.next() }
                 }.also { c.commit() }
             } catch (e: Exception) { c.rollback(); throw e }
         }
-        if (newLike) events.publishCommitted(PostLiked(id, user))
+        change?.let { events.publishCommitted(it) }
         return visible
     }
 

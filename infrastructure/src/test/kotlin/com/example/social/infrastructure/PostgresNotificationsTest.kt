@@ -353,7 +353,7 @@ class PostgresNotificationsTest {
         assertEquals(true, warning.thrown?.message?.contains("notice write failed"))
     }
 
-    @Test fun `a failed withdrawal keeps the like and its notice`() = withDatabase { ds ->
+    @Test fun `a failed notice removal keeps the unlike and leaves its notice behind`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
         val fan = Account(UserId.new(), "fan@example.com", "Fan", null, true).also(accounts::create).id
@@ -370,8 +370,22 @@ class PostgresNotificationsTest {
         ds.connection.use { it.createStatement().execute("ALTER TABLE notifications ENABLE TRIGGER fail_notice") }
         assertEquals(1L, notifications.unreadCount(author))
 
-        assertFails { posts.setLike(post.id, fan, false) }
-        assertEquals(setOf(fan), posts.find(post.id)!!.likes)
+        assertTrue(posts.setLike(post.id, fan, false))
+        assertEquals(emptySet(), posts.find(post.id)!!.likes)
+        assertEquals(1L, notifications.unreadCount(author))
+    }
+
+    @Test fun `an unlike does not remove the notice of a like that still stands`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
+        val fan = Account(UserId.new(), "fan@example.com", "Fan", null, true).also(accounts::create).id
+        val posts = wiredPosts(ds)
+        val notifications = Notifications(PostgresNotifications(ds))
+        val post = posts.save(Post.publish(author, "Like me"))
+        assertTrue(posts.setLike(post.id, fan, true))
+
+        EventBus().also { NotificationHandlers(ds).register(it) }.publish(PostUnliked(post.id, fan))
+
         assertEquals(1L, notifications.unreadCount(author))
     }
 
