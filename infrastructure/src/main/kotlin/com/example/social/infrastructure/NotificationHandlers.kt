@@ -33,7 +33,7 @@ class NotificationHandlers(private val dataSource: DataSource) {
             dataSource.connection.use { c -> NotificationWriter.removePostNotices(c, event.post) }
         }
         events.subscribe(FollowRemoved::class) { event ->
-            dataSource.connection.use { c -> NotificationWriter.removeMembersOnlyNotices(c, event.follower, event.followed) }
+            dataSource.connection.use { c -> NotificationWriter.removePostNoticesFrom(c, event.follower, event.followed) }
         }
         events.subscribe(CommentAdded::class) { event ->
             dataSource.connection.use { c -> NotificationWriter.addPostComment(c, event.comment) }

@@ -245,12 +245,12 @@ class PostgresNotificationsTest {
         assertEquals(3L, notifications.unreadCount(follower))
 
         follows.unfollow(follower, author)
-        assertEquals(listOf(public.id), postsSeen())
-        assertEquals(listOf(NotificationKind.NEW_POST, NotificationKind.FOLLOW_ACCEPTED), notifications.list(follower).map { it.kind })
-        assertEquals(2L, notifications.unreadCount(follower))
+        assertEquals(emptyList(), postsSeen())
+        assertEquals(listOf(NotificationKind.FOLLOW_ACCEPTED), notifications.list(follower).map { it.kind })
+        assertEquals(1L, notifications.unreadCount(follower))
 
         posts.changeVisibility(later.id, author, PostVisibility.PUBLIC)
-        assertEquals(listOf(later.id, public.id), postsSeen())
+        assertEquals(emptyList(), postsSeen())
     }
 
     @Test fun `liking a post notifies its author once and unliking withdraws the notice`() = withDatabase { ds ->
@@ -560,7 +560,7 @@ class PostgresNotificationsTest {
         assertTrue(storedNotices(ds, a).contains("new_post" to "private"))
     }
 
-    @Test fun `unfollowing removes the members-only post notices the follower received`() = withDatabase { ds ->
+    @Test fun `unfollowing removes every post notice the follower received from the author`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
         val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
@@ -568,8 +568,7 @@ class PostgresNotificationsTest {
         follows.request(a, b)
         follows.accept(b, a)
         val posts = wiredPosts(ds)
-        val post = posts.save(Post.publish(b, "Members only"))
-        posts.changeVisibility(post.id, b, PostVisibility.MEMBERS)
+        posts.save(Post.publish(b, "Public for followers"))
 
         follows.unfollow(a, b)
 

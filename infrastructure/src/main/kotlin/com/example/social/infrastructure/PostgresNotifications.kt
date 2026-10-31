@@ -116,9 +116,9 @@ internal object NotificationWriter {
             s.setObject(1, post.value); s.executeUpdate()
         }
     }
-    /** Members-only posts stop being visible once the follow that granted access is gone. */
-    fun removeMembersOnlyNotices(c: Connection, follower: UserId, followed: UserId) {
-        c.prepareStatement("DELETE FROM notifications WHERE recipient_id = ? AND post_author_id = ? AND post_visibility = 'members'").use { s ->
+    /** Unfollowing ends access to the author's posts, so the follower's post notices from them go too. */
+    fun removePostNoticesFrom(c: Connection, follower: UserId, followed: UserId) {
+        c.prepareStatement("DELETE FROM notifications WHERE recipient_id = ? AND post_author_id = ?").use { s ->
             s.setObject(1, follower.value); s.setObject(2, followed.value); s.executeUpdate()
         }
     }
