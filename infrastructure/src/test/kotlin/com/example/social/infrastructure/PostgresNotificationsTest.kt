@@ -528,6 +528,22 @@ class PostgresNotificationsTest {
         assertEquals(listOf<DomainEvent>(PostVisibilityChanged(post.id, PostVisibility.MEMBERS), PostDeleted(post.id)), seen)
     }
 
+    @Test fun `removing an accepted follow publishes FollowRemoved for the pair`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
+        val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
+        val events = EventBus()
+        val seen = mutableListOf<DomainEvent>()
+        events.subscribe(FollowRemoved::class) { seen += it }
+        val follows = FollowService(accounts, PostgresFollows(ds, events))
+        follows.request(a, b)
+        follows.accept(b, a)
+
+        follows.unfollow(a, b)
+
+        assertEquals(listOf<DomainEvent>(FollowRemoved(a, b)), seen)
+    }
+
     @Test fun `history pages newest first by id without gaps for tied timestamps`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create).id

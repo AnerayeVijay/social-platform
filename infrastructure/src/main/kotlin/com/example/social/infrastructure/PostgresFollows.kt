@@ -2,6 +2,7 @@ package com.example.social.infrastructure
 
 import com.example.social.application.*
 import com.example.social.domain.FollowAccepted
+import com.example.social.domain.FollowRemoved
 import com.example.social.domain.FollowRequested
 import com.example.social.domain.UserId
 import com.example.social.notifications.NotificationKind
@@ -40,7 +41,7 @@ class PostgresFollows(private val dataSource: DataSource, private val events: Ev
         if (accepted) events.publishCommitted(FollowAccepted(follower, followed, now))
     }
     override fun remove(follower: UserId, followed: UserId, only: FollowState?) {
-        transaction { c ->
+        val removed = transaction { c ->
             val removed = c.prepareStatement("DELETE FROM member_follows WHERE follower_id = ? AND followed_id = ?" +
                 (if (only == null) "" else " AND status = ?") + " RETURNING status").use { s ->
                 s.setObject(1, follower.value); s.setObject(2, followed.value)
@@ -48,7 +49,9 @@ class PostgresFollows(private val dataSource: DataSource, private val events: Ev
                 s.executeQuery().use { r -> if (r.next()) r.getString(1) else null }
             }
             if (removed == "pending") NotificationWriter.remove(c, NotificationKind.FOLLOW_REQUEST, followed, follower)
+            removed
         }
+        if (removed == "accepted") events.publishCommitted(FollowRemoved(follower, followed))
     }
     override fun list(member: UserId, kind: FollowList, limit: Int, after: UserId?): List<UserId> {
         val outgoing = kind == FollowList.FOLLOWING
