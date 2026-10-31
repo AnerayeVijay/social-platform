@@ -9,6 +9,8 @@ import com.zaxxer.hikari.HikariDataSource
 import java.sql.Connection
 import java.time.Instant
 import java.util.UUID
+import java.util.logging.Level
+import java.util.logging.Logger
 import javax.sql.DataSource
 
 class PostgresPostRepository(private val dataSource: DataSource, private val events: EventBus) : PostRepository {
@@ -63,7 +65,7 @@ class PostgresPostRepository(private val dataSource: DataSource, private val eve
                 }.also { c.commit() }
             } catch (e: Exception) { c.rollback(); throw e }
         }
-        if (newLike) events.publish(PostLiked(id, user))
+        if (newLike) events.publish(PostLiked(id, user)).forEach { log.log(Level.WARNING, "Post like notice failed for post ${id.value}", it) }
         return visible
     }
 
@@ -301,6 +303,8 @@ class PostgresPostRepository(private val dataSource: DataSource, private val eve
     }
 
     companion object {
+        private val log = Logger.getLogger(PostgresPostRepository::class.java.name)
+
         fun dataSource(): HikariDataSource {
             val config = HikariConfig().apply {
                 jdbcUrl = System.getenv("DATABASE_URL") ?: "jdbc:postgresql://localhost:5432/social"

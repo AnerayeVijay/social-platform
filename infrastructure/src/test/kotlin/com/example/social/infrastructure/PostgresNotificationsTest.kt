@@ -11,6 +11,10 @@ import java.util.concurrent.Callable
 import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.logging.Handler
+import java.util.logging.Level
+import java.util.logging.LogRecord
+import java.util.logging.Logger
 import kotlin.test.*
 
 class PostgresNotificationsTest {
@@ -290,6 +294,34 @@ class PostgresNotificationsTest {
 
         assertEquals(setOf(fan), posts.find(post.id)!!.likes)
         assertEquals(0L, notifications.unreadCount(author))
+    }
+
+    @Test fun `a failed like notice is logged with its cause`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
+        val fan = Account(UserId.new(), "fan@example.com", "Fan", null, true).also(accounts::create).id
+        val posts = wiredPosts(ds)
+        val post = posts.save(Post.publish(author, "Like me"))
+        ds.connection.use { it.createStatement().execute("""
+            CREATE FUNCTION fail_notice() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'} BEGIN RAISE EXCEPTION 'notice write failed'; END ${'$'}${'$'};
+            CREATE TRIGGER fail_notice BEFORE INSERT OR DELETE ON notifications FOR EACH ROW EXECUTE FUNCTION fail_notice();
+        """) }
+        val records = mutableListOf<LogRecord>()
+        val logger = Logger.getLogger(PostgresPostRepository::class.java.name)
+        val capture = object : Handler() {
+            override fun publish(record: LogRecord) { records += record }
+            override fun flush() {}
+            override fun close() {}
+        }
+        logger.addHandler(capture)
+        try {
+            posts.setLike(post.id, fan, true)
+        } finally {
+            logger.removeHandler(capture)
+        }
+
+        val warning = records.single { it.level == Level.WARNING }
+        assertEquals(true, warning.thrown?.message?.contains("notice write failed"))
     }
 
     @Test fun `a failed withdrawal keeps the like and its notice`() = withDatabase { ds ->
