@@ -105,6 +105,23 @@ internal object NotificationWriter {
             s.setObject(1, post.value); s.setObject(2, actor.value); s.setObject(3, post.value); s.setObject(4, actor.value); s.executeUpdate()
         }
     }
+    /** Keeps the stored visibility of a post's notices in step with the post. */
+    fun updatePostVisibility(c: Connection, post: PostId, visibility: String) {
+        c.prepareStatement("UPDATE notifications SET post_visibility = ? WHERE post_id = ?").use { s ->
+            s.setString(1, visibility); s.setObject(2, post.value); s.executeUpdate()
+        }
+    }
+    fun removePostNotices(c: Connection, post: PostId) {
+        c.prepareStatement("DELETE FROM notifications WHERE post_id = ?").use { s ->
+            s.setObject(1, post.value); s.executeUpdate()
+        }
+    }
+    /** Members-only posts stop being visible once the follow that granted access is gone. */
+    fun removeMembersOnlyNotices(c: Connection, follower: UserId, followed: UserId) {
+        c.prepareStatement("DELETE FROM notifications WHERE recipient_id = ? AND post_author_id = ? AND post_visibility = 'members'").use { s ->
+            s.setObject(1, follower.value); s.setObject(2, followed.value); s.executeUpdate()
+        }
+    }
     /** Notifies the post owner of a comment or reply on their post; skips own comments and account-less legacy ids. */
     fun addPostComment(c: Connection, comment: CommentId) {
         c.prepareStatement("""

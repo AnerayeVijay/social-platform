@@ -545,6 +545,59 @@ class PostgresNotificationsTest {
         assertEquals(listOf<DomainEvent>(FollowRemoved(a, b)), seen)
     }
 
+    @Test fun `a visibility change updates the stored visibility of the post's notices`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
+        val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
+        val follows = FollowService(accounts, wiredFollows(ds))
+        follows.request(a, b)
+        follows.accept(b, a)
+        val posts = wiredPosts(ds)
+        val post = posts.save(Post.publish(b, "Hello followers"))
+
+        assertTrue(posts.changeVisibility(post.id, b, PostVisibility.PRIVATE))
+
+        assertTrue(storedNotices(ds, a).contains("new_post" to "private"))
+    }
+
+    @Test fun `unfollowing removes the members-only post notices the follower received`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
+        val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
+        val follows = FollowService(accounts, wiredFollows(ds))
+        follows.request(a, b)
+        follows.accept(b, a)
+        val posts = wiredPosts(ds)
+        val post = posts.save(Post.publish(b, "Members only"))
+        posts.changeVisibility(post.id, b, PostVisibility.MEMBERS)
+
+        follows.unfollow(a, b)
+
+        assertFalse(storedNotices(ds, a).any { it.first == "new_post" })
+    }
+
+    @Test fun `deleting a post removes its notices`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
+        val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
+        val follows = FollowService(accounts, wiredFollows(ds))
+        follows.request(a, b)
+        follows.accept(b, a)
+        val post = Post.publish(b, "Going away")
+        wiredPosts(ds).save(post)
+
+        EventBus().also { NotificationHandlers(ds).register(it) }.publish(PostDeleted(post.id))
+
+        assertFalse(storedNotices(ds, a).any { it.first == "new_post" })
+    }
+
+    private fun storedNotices(ds: HikariDataSource, recipient: UserId): List<Pair<String, String?>> = ds.connection.use { c ->
+        c.prepareStatement("SELECT kind, post_visibility FROM notifications WHERE recipient_id = ?").use { s ->
+            s.setObject(1, recipient.value)
+            s.executeQuery().use { r -> buildList { while (r.next()) add(r.getString(1) to r.getString(2)) } }
+        }
+    }
+
     @Test fun `new post notices store the post's author and visibility`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id

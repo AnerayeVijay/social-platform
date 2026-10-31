@@ -3,9 +3,12 @@ package com.example.social.infrastructure
 import com.example.social.domain.CommentAdded
 import com.example.social.domain.FollowAccepted
 import com.example.social.domain.FollowRequested
+import com.example.social.domain.FollowRemoved
+import com.example.social.domain.PostDeleted
 import com.example.social.domain.PostLiked
 import com.example.social.domain.PostPublished
 import com.example.social.domain.PostUnliked
+import com.example.social.domain.PostVisibilityChanged
 import com.example.social.notifications.NotificationKind
 import com.example.social.sharedkernel.DomainEvent
 import com.example.social.sharedkernel.EventBus
@@ -22,6 +25,15 @@ class NotificationHandlers(private val dataSource: DataSource) {
         }
         events.subscribe(PostUnliked::class) { event ->
             dataSource.connection.use { c -> NotificationWriter.removePostLike(c, event.post, event.actor) }
+        }
+        events.subscribe(PostVisibilityChanged::class) { event ->
+            dataSource.connection.use { c -> NotificationWriter.updatePostVisibility(c, event.post, event.visibility.name.lowercase()) }
+        }
+        events.subscribe(PostDeleted::class) { event ->
+            dataSource.connection.use { c -> NotificationWriter.removePostNotices(c, event.post) }
+        }
+        events.subscribe(FollowRemoved::class) { event ->
+            dataSource.connection.use { c -> NotificationWriter.removeMembersOnlyNotices(c, event.follower, event.followed) }
         }
         events.subscribe(CommentAdded::class) { event ->
             dataSource.connection.use { c -> NotificationWriter.addPostComment(c, event.comment) }
