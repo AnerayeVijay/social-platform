@@ -3,6 +3,8 @@ package com.example.social.api
 import com.example.social.application.*
 import com.example.social.domain.UserId
 import com.example.social.http.AccessControl
+import com.example.social.http.decodeCommentCursor
+import com.example.social.http.encodeCommentCursor
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
@@ -19,11 +21,31 @@ private fun FeedSource.view() = mapOf(
     "lastAttemptAt" to lastAttemptAt?.toString(), "lastSuccessAt" to lastSuccessAt?.toString(), "lastError" to lastError
 )
 
+private fun com.example.social.domain.Comment.articleCommentView() = mapOf(
+    "id" to id.value.toString(), "authorId" to authorId.value.toString(), "body" to body, "createdAt" to createdAt.toString()
+)
+
 fun articleFeedRoutes(service: ArticleFeedService, access: AccessControl): RoutingHttpHandler {
     fun handle(request: Request, action: (UserId) -> Response): Response = apiSafely {
         action(access.session(request)?.accountId ?: throw AuthenticationFailed())
     }
+    fun handleArticle(request: Request, action: (UserId, UUID) -> Response): Response = try {
+        handle(request) { owner ->
+            action(owner, try { UUID.fromString(request.path("id")!!) } catch (_: IllegalArgumentException) { throw ArticleNotFound() })
+        }
+    } catch (_: ArticleNotFound) { apiJson(mapOf("error" to "Article not found"), Status.NOT_FOUND) }
     return routes(
+        "/api/me/articles/{id}/comments" bind Method.GET to { request -> handleArticle(request) { viewer, article ->
+            val limit = request.query("limit")?.let { it.toIntOrNull() ?: throw IllegalArgumentException("Invalid limit") } ?: 20
+            val page = service.comments(viewer, article, limit, request.query("after")?.let(::decodeCommentCursor))
+            apiJson(mapOf("comments" to page.comments.map { it.articleCommentView() }, "next" to page.next?.let(::encodeCommentCursor)))
+        } },
+        "/api/me/articles/{id}/comments" bind Method.POST to { request -> handleArticle(request) { viewer, article ->
+            val body = try { feedMapper.readTree(request.bodyString())?.get("body")?.takeIf { it.isTextual }?.asText() }
+            catch (_: JsonProcessingException) { throw IllegalArgumentException("Invalid comment request") }
+            require(body != null) { "Comment body is required" }
+            apiJson(service.comment(viewer, article, body).articleCommentView(), Status.CREATED)
+        } },
         "/api/me/articles" bind Method.GET to { request -> handle(request) { owner ->
             val limit = request.query("limit")?.let { it.toIntOrNull() ?: throw IllegalArgumentException("Invalid limit") } ?: 20
             val page = service.articles(owner, limit, request.query("before")?.let(::parseArticleCursor))

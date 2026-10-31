@@ -43,7 +43,7 @@ fun main() {
     val googleIdentities = PostgresGoogleIdentities(dataSource)
     val threads = CommentThreads(PostgresCommentThreads(dataSource, events))
     val articleRepository = PostgresArticleFeeds(dataSource)
-    val articleFeeds = ArticleFeedService(articleRepository, fetcher = HttpArticleFeedFetcher(), content = articleRepository)
+    val articleFeeds = ArticleFeedService(articleRepository, fetcher = HttpArticleFeedFetcher(), content = articleRepository, discussions = articleRepository)
     val customization = CustomizationService(PostgresMemberCustomizations(dataSource), rasterImages, imageGate)
     val notifications = Notifications(PostgresNotifications(dataSource))
     val content = routes(notificationWebRoutes(notifications, access), settingsRoutes(customization, accounts, accountService, access), articleFeedRoutes(articleFeeds, access), commentRoutes(threads, access), webRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, articleFeeds, hashtagFollows = hashtagFollows),
