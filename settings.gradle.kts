@@ -1,2 +1,2 @@
 rootProject.name = "social-platform"
-include("domain", "application", "infrastructure", "notifications", "http-common", "api", "web", "server")
+include("shared-kernel", "domain", "application", "infrastructure", "notifications", "http-common", "api", "web", "server")
