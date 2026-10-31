@@ -1,6 +1,7 @@
 package com.example.social.infrastructure
 
 import com.example.social.application.ArticleFeedFetcher
+import com.example.social.application.FeedDiscovery
 import com.example.social.application.FeedEntry
 import okhttp3.Dns
 import okhttp3.HttpUrl
@@ -33,7 +34,7 @@ class HttpArticleFeedFetcher(
     private val maxRedirects: Int = 3,
     private val maxEntries: Int = 50,
     timeout: Duration = Duration.ofSeconds(5),
-) : ArticleFeedFetcher {
+) : ArticleFeedFetcher, FeedDiscovery {
     private val totalTimeoutNanos = timeout.multipliedBy(2).toNanos()
     // Vetting happens inside Dns so OkHttp connects only to the addresses we approved (no TOCTOU
     // re-resolution / DNS rebinding) while still verifying TLS against the original hostname.
@@ -52,31 +53,37 @@ class HttpArticleFeedFetcher(
         .connectTimeout(timeout).readTimeout(timeout).writeTimeout(timeout).callTimeout(timeout.multipliedBy(2))
         .build()
 
-    override fun fetch(url: String): List<FeedEntry> = try { fetchWithinDeadline(url) }
-    catch (error: IOException) { throw FeedFetchException("Feed request failed or timed out", error) }
+    override fun fetch(url: String): List<FeedEntry> = download(url, FEED_ACCEPT, "Feed", ::parse)
 
-    private fun fetchWithinDeadline(url: String): List<FeedEntry> {
+    override fun discover(address: String): List<String> =
+        download(address, "text/html, application/xhtml+xml", "Page") { bytes, source -> extractFeedLinks(String(bytes, Charsets.UTF_8), source.toString()) }
+
+    /** One safe download path (vetted addresses, redirect and size limits, shared deadline) for feeds and pages alike. */
+    private fun <T> download(url: String, accept: String, what: String, read: (ByteArray, HttpUrl) -> T): T = try { downloadWithinDeadline(url, accept, what, read) }
+    catch (error: IOException) { throw FeedFetchException("$what request failed or timed out", error) }
+
+    private fun <T> downloadWithinDeadline(url: String, accept: String, what: String, read: (ByteArray, HttpUrl) -> T): T {
         val startedAt = System.nanoTime()
         var current = vetUrl(url.toHttpUrlOrNull())
         repeat(maxRedirects + 1) {
             val remaining = totalTimeoutNanos - (System.nanoTime() - startedAt)
-            if (remaining <= 0) throw FeedFetchException("Feed request failed or timed out")
-            val call = client.newCall(Request.Builder().url(current).header("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml").build())
+            if (remaining <= 0) throw FeedFetchException("$what request failed or timed out")
+            val call = client.newCall(Request.Builder().url(current).header("Accept", accept).build())
             call.timeout().timeout(remaining, TimeUnit.NANOSECONDS)
             call.execute().use { response ->
                 if (response.isRedirect) {
                     current = vetUrl(response.header("Location")?.let(current::resolve))
                     return@repeat
                 }
-                if (!response.isSuccessful) throw FeedFetchException("Feed responded with HTTP ${response.code}")
-                val body = response.body ?: throw FeedFetchException("Feed response was empty")
-                if (body.contentLength() > maxBytes) throw FeedFetchException("Feed is too large")
+                if (!response.isSuccessful) throw FeedFetchException("$what responded with HTTP ${response.code}")
+                val body = response.body ?: throw FeedFetchException("$what response was empty")
+                if (body.contentLength() > maxBytes) throw FeedFetchException("$what is too large")
                 val bytes = body.byteStream().use { it.readNBytes((maxBytes + 1).toInt()) }
-                if (bytes.size > maxBytes) throw FeedFetchException("Feed is too large")
-                return parse(bytes, current)
+                if (bytes.size > maxBytes) throw FeedFetchException("$what is too large")
+                return read(bytes, current)
             }
         }
-        throw FeedFetchException("Feed redirected too many times")
+        throw FeedFetchException("$what redirected too many times")
     }
 
     private fun vetUrl(url: HttpUrl?): HttpUrl {
@@ -139,6 +146,7 @@ class HttpArticleFeedFetcher(
         children(parent, name, namespace).firstOrNull()?.textContent
 
     private companion object {
+        const val FEED_ACCEPT = "application/rss+xml, application/atom+xml, application/xml, text/xml"
         const val ATOM = "http://www.w3.org/2005/Atom"
         const val RSS_CONTENT = "http://purl.org/rss/1.0/modules/content/"
         const val MAX_TITLE = 200
