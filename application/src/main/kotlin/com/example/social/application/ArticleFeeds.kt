@@ -1,5 +1,6 @@
 package com.example.social.application
 
+import com.example.social.domain.Comment
 import com.example.social.domain.UserId
 import java.net.URI
 import java.time.Instant
@@ -38,11 +39,21 @@ interface ArticleFeedContent {
     fun page(owner: UserId, limit: Int, before: ArticleCursor?): ArticlePage
 }
 
+interface ArticleDiscussions {
+    /** Null when [viewer] cannot see the article. Oldest first, ties by id; [after] is exclusive. */
+    fun page(viewer: UserId, articleId: UUID, limit: Int, after: CommentCursor?): CommentPage?
+    /** False when [viewer] cannot see the article. */
+    fun add(viewer: UserId, articleId: UUID, comment: Comment): Boolean
+}
+
+class ArticleNotFound : RuntimeException("Article not found")
+
 class ArticleFeedService(
     private val feeds: ArticleFeeds,
     private val now: () -> Instant = Instant::now,
     private val fetcher: ArticleFeedFetcher? = null,
-    private val content: ArticleFeedContent? = null
+    private val content: ArticleFeedContent? = null,
+    private val discussions: ArticleDiscussions? = null
 ) {
     fun articles(owner: UserId, limit: Int = 20, before: ArticleCursor? = null): ArticlePage {
         require(limit in 1..100) { "limit must be between 1 and 100" }
@@ -65,6 +76,19 @@ class ArticleFeedService(
         if (entries == null) store.failRefresh(feed.owner, feed.id, REFRESH_FAILED)
         else store.storeEntries(feed.owner, feed.id, entries, at)
     }
+
+    fun comments(viewer: UserId, articleId: UUID, limit: Int = 20, after: CommentCursor? = null): CommentPage {
+        require(limit in 1..100) { "limit must be between 1 and 100" }
+        return store().page(viewer, articleId, limit, after) ?: throw ArticleNotFound()
+    }
+
+    fun comment(viewer: UserId, articleId: UUID, body: String): Comment {
+        val comment = Comment(authorId = viewer, body = body.trim(), createdAt = now())
+        if (!store().add(viewer, articleId, comment)) throw ArticleNotFound()
+        return comment
+    }
+
+    private fun store() = checkNotNull(discussions) { "Article discussions are not configured" }
 
     fun add(owner: UserId, name: String, url: String): FeedSource {
         val cleanName = name.trim()
