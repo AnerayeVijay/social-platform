@@ -43,7 +43,13 @@ fun main() {
     val googleIdentities = PostgresGoogleIdentities(dataSource)
     val threads = CommentThreads(PostgresCommentThreads(dataSource, events))
     val articleRepository = PostgresArticleFeeds(dataSource).also { it.normalizeThreadKeys() }
-    val articleFeeds = ArticleFeedService(articleRepository, fetcher = HttpArticleFeedFetcher(), content = articleRepository, discussions = articleRepository)
+    val publicFeedFetcher = HttpArticleFeedFetcher()
+    // Optional, operator run RSSHub: only exact allow-listed route URLs are requested, so its (usually private) address is
+    // permitted, and redirects are off so it cannot bounce a request to another internal host.
+    val rssHub = rssHubFeeds(System.getenv("RSSHUB_BASE_URL"), System.getenv("RSSHUB_ROUTES"),
+        HttpArticleFeedFetcher(isPermittedAddress = { true }, maxRedirects = 0))
+    val articleFeeds = ArticleFeedService(articleRepository, fetcher = FeedFetchRouter(publicFeedFetcher, rssHub), content = articleRepository,
+        discussions = articleRepository, resolver = FeedSourceResolver(publicFeedFetcher, publicFeedFetcher, rssHub))
     val customization = CustomizationService(PostgresMemberCustomizations(dataSource), rasterImages, imageGate)
     val notifications = Notifications(PostgresNotifications(dataSource))
     val content = routes(notificationWebRoutes(notifications, access), settingsRoutes(customization, accounts, accountService, access), articleFeedRoutes(articleFeeds, access), commentRoutes(threads, access), webRoutes(queries, service, access, accounts, accountService, follows, googleIdentities, threads, articleFeeds, ArticleSharing(articleRepository, service, baseUrl), hashtagFollows = hashtagFollows),

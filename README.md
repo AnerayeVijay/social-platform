@@ -282,8 +282,19 @@ also require the existing CSRF token.
 
 Open **News & Articles** next to **All posts** and **Following**, then expand **Manage feeds**.
 Add a name (for example, News or AI articles) and the publisher's public RSS or Atom URL.
-You can subscribe to up to 20 sources. Use a feed URL, not a normal website or article URL;
-this feature does not scrape websites or bypass paywalls.
+You can subscribe to up to 20 sources. You can paste a feed URL or a normal site address: if the
+address is not itself a feed, the page's advertised RSS/Atom links are tried. Otherwise the
+feature does not scrape websites or bypass paywalls. The one exception is an optional,
+operator-run [RSSHub](https://github.com/DIYgod/RSSHub) (unmodified, AGPL-3.0): set `RSSHUB_BASE_URL` and
+`RSSHUB_ROUTES` (comma-separated `host=/route` pairs, for example `news.example=/news/latest`). RSSHub is
+disabled unless both are set, only the listed routes are ever requested, and members never supply RSSHub
+paths. RSSHub routes are allowed only when the operator enables them, and are the operator's
+responsibility, including the terms of the sites they cover and RSSHub's own licence.
+
+For sites with no feed at all, **Manage feeds** also has **Add an article by hand** (source name, title,
+plain-text abstract up to 600 characters, and an http(s) link). Only add text you have the right to
+share. Hand-entered articles are saved in a personal source that is never fetched, and work with the
+article list, discussions and sharing like any other article.
 
 All your sources appear together in one newest-first list with source names, plain-text abstracts,
 original article links, and **Older articles** pagination. Subscriptions are personal: other members
@@ -312,6 +323,7 @@ Authenticated JSON endpoints (use a bearer token, or a session cookie with CSRF 
 | `POST` | `/api/me/feeds` | Add a source using `{"name":"AI articles","url":"https://publisher.example/feed.xml"}` |
 | `DELETE` | `/api/me/feeds/SOURCE_UUID` | Remove your source and its articles |
 | `GET` | `/api/me/articles?limit=20` | Combined articles, plus a `next` cursor or `null` |
+| `POST` | `/api/me/articles/manual` | Add an article by hand: `{"sourceName","title","abstract","link"}` |
 
 For subsequent article pages, URL-encode the returned `next` value as `before`. Limits range from
 1 to 100. Article objects contain `id`, `sourceId`, `sourceName`, `title`, `url`, `abstract`, and

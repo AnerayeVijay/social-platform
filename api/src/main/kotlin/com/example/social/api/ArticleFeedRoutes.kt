@@ -15,6 +15,7 @@ import java.util.UUID
 private val feedMapper = jacksonObjectMapper()
 
 data class FeedSourceRequest(val name: String = "", val url: String = "")
+data class ManualArticleRequest(val sourceName: String = "", val title: String = "", val abstract: String = "", val link: String = "")
 
 private fun FeedSource.view() = mapOf(
     "id" to id.toString(), "name" to name, "url" to url, "createdAt" to createdAt.toString(),
@@ -53,6 +54,12 @@ fun articleFeedRoutes(service: ArticleFeedService, access: AccessControl): Routi
                 "id" to it.id.toString(), "sourceId" to it.sourceId.toString(), "sourceName" to it.sourceName, "title" to it.title,
                 "url" to it.url, "abstract" to it.abstract, "publishedAt" to it.publishedAt.toString()
             ) }, "next" to page.next?.let { "${it.publishedAt}|${it.id}" }))
+        } },
+        "/api/me/articles/manual" bind Method.POST to { request -> handle(request) { owner ->
+            val body = try { feedMapper.readValue<ManualArticleRequest>(request.bodyString()) }
+            catch (_: JsonProcessingException) { throw IllegalArgumentException("Invalid article request") }
+            service.addManualArticle(owner, body.sourceName, body.title, body.abstract, body.link)
+            apiJson(mapOf("created" to true), Status.CREATED)
         } },
         "/api/me/feeds" bind Method.GET to { request -> handle(request) { owner ->
             apiJson(mapOf("feeds" to service.list(owner).map { it.view() }))

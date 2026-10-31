@@ -18,6 +18,9 @@ fun articleFeedWebRoutes(service: ArticleFeedService?, access: AccessControl?, a
         val session = access?.session(request) ?: return Response(Status.UNAUTHORIZED).body("Sign in to read your feeds")
         if (service == null) return Response(Status.SERVICE_UNAVAILABLE).body("Article feeds are not configured")
         return try { action(session, service) }
+        catch (error: NoFeedFound) {
+            htmlPage("No feed found", "<section class=\"card\"><h1>No feed found</h1><p>${escapeHtml(error.message.orEmpty())}</p><a href=\"/me/articles\">Back to articles</a></section>", Status.BAD_REQUEST)
+        }
         catch (_: IllegalArgumentException) {
             htmlPage("Check your feed", "<section class=\"card\"><h1>Check your feed</h1><p>Enter a name and a valid public RSS or Atom URL. You can add up to 20 feeds.</p><a href=\"/me/articles\">Back to articles</a></section>", Status.BAD_REQUEST)
         }
@@ -40,11 +43,12 @@ fun articleFeedWebRoutes(service: ArticleFeedService?, access: AccessControl?, a
                 append("<details class=\"card\"${if (sources.isEmpty()) " open" else ""}><summary>Manage feeds</summary><h2>${if (sources.isEmpty()) "Add your first feed" else "Your sources"}</h2>")
                 append("<p>Add a public RSS or Atom feed URL, not an article page. Sources refresh on visits, at most once every 15 minutes.</p>")
                 sources.forEach { source ->
-                    append("<section class=\"feed-source\"><h3 translate=\"no\">${escapeHtml(source.name)}</h3><p translate=\"no\">${escapeHtml(source.url)}</p>")
+                    append("<section class=\"feed-source\"><h3 translate=\"no\">${escapeHtml(source.name)}</h3><p translate=\"no\">${if (source.manual) "Added by hand" else escapeHtml(source.url)}</p>")
                     source.lastSuccessAt?.let { append("<p>Last updated: <time datetime=\"$it\">$it</time></p>") }
                     append("<form action=\"/me/feeds/${source.id}/remove\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><button class=\"button\" type=\"submit\">Remove feed</button></form></section>")
                 }
-                append("<form class=\"add-feed\" action=\"/me/feeds\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"feed-name\">Feed name</label><input id=\"feed-name\" name=\"name\" maxlength=\"100\" required placeholder=\"AI articles\"><label for=\"feed-url\">RSS or Atom URL</label><input id=\"feed-url\" name=\"url\" type=\"url\" maxlength=\"2048\" required placeholder=\"https://example.com/feed.xml\"><p><button class=\"button\" type=\"submit\">Add feed</button></p></form></details>")
+                append("<form class=\"add-feed\" action=\"/me/feeds\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><label for=\"feed-name\">Feed name</label><input id=\"feed-name\" name=\"name\" maxlength=\"100\" required placeholder=\"AI articles\"><label for=\"feed-url\">RSS or Atom URL</label><input id=\"feed-url\" name=\"url\" type=\"url\" maxlength=\"2048\" required placeholder=\"https://example.com/feed.xml\"><p><button class=\"button\" type=\"submit\">Add feed</button></p></form>")
+                append("<form class=\"add-manual-article\" action=\"/me/articles/manual\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\"><h2>Add an article by hand</h2><p>For sites without a feed. Only add text you have the right to share.</p><label for=\"manual-source\">Source name</label><input id=\"manual-source\" name=\"source\" maxlength=\"100\" required><label for=\"manual-title\">Article title</label><input id=\"manual-title\" name=\"title\" maxlength=\"200\" required><label for=\"manual-abstract\">Abstract (plain text)</label><textarea id=\"manual-abstract\" name=\"abstract\" rows=\"3\" maxlength=\"600\"></textarea><label for=\"manual-link\">Link to the original article</label><input id=\"manual-link\" name=\"link\" type=\"url\" maxlength=\"2048\" required placeholder=\"https://example.com/article\"><p><button class=\"button\" type=\"submit\">Add article</button></p></form></details>")
                 sources.filter { it.lastError != null }.forEach { source ->
                     append("<section class=\"card feed-error\" role=\"status\"><strong translate=\"no\">${escapeHtml(source.name)}</strong><p>${escapeHtml(source.lastError!!)}</p><p>Saved articles are still available. We will retry on a visit after 15 minutes.</p></section>")
                 }
@@ -83,6 +87,14 @@ fun articleFeedWebRoutes(service: ArticleFeedService?, access: AccessControl?, a
                 return@signedIn htmlPage("Check your comment", "<section class=\"card\"><h1>Check your comment</h1><p>Write between 1 and 1000 characters.</p><a href=\"/me/articles/$id/discussion\">Back to discussion</a></section>", Status.BAD_REQUEST)
             }
             Response(Status.SEE_OTHER).header("Location", "/me/articles/$id/discussion")
+        } },
+        "/me/articles/manual" bind Method.POST to { request -> signedIn(request) { session, feeds ->
+            val fields = formFields(request)
+            try { feeds.addManualArticle(session.accountId, fields["source"].orEmpty(), fields["title"].orEmpty(), fields["abstract"].orEmpty(), fields["link"].orEmpty()) }
+            catch (error: IllegalArgumentException) {
+                return@signedIn htmlPage("Check your article", "<section class=\"card\"><h1>Check your article</h1><p>${escapeHtml(error.message.orEmpty())}</p><a href=\"/me/articles\">Back to articles</a></section>", Status.BAD_REQUEST)
+            }
+            back()
         } },
         "/me/feeds" bind Method.POST to { request -> signedIn(request) { session, feeds ->
             val fields = formFields(request)
