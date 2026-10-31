@@ -1,15 +1,18 @@
 package com.example.social.infrastructure
 
 import com.example.social.application.*
+import com.example.social.domain.FollowAccepted
+import com.example.social.domain.FollowRequested
 import com.example.social.domain.UserId
 import com.example.social.notifications.NotificationKind
+import com.example.social.sharedkernel.EventBus
 import java.sql.Connection
 import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
 
-class PostgresFollows(private val dataSource: DataSource) : Follows {
+class PostgresFollows(private val dataSource: DataSource, private val events: EventBus) : Follows {
     override fun state(follower: UserId, followed: UserId): FollowState = dataSource.connection.use { c ->
         c.prepareStatement("SELECT status FROM member_follows WHERE follower_id = ? AND followed_id = ?").use { s ->
             s.setObject(1, follower.value); s.setObject(2, followed.value)
@@ -17,25 +20,24 @@ class PostgresFollows(private val dataSource: DataSource) : Follows {
         }
     }
     override fun request(follower: UserId, followed: UserId, now: Instant) {
-        transaction { c ->
-            val inserted = c.prepareStatement("INSERT INTO member_follows(follower_id, followed_id, status, requested_at) VALUES (?, ?, 'pending', ?) ON CONFLICT DO NOTHING").use { s ->
+        val inserted = transaction { c ->
+            c.prepareStatement("INSERT INTO member_follows(follower_id, followed_id, status, requested_at) VALUES (?, ?, 'pending', ?) ON CONFLICT DO NOTHING").use { s ->
                 s.setObject(1, follower.value); s.setObject(2, followed.value); s.setTimestamp(3, Timestamp.from(now))
                 s.executeUpdate() == 1
             }
-            if (inserted) NotificationWriter.add(c, NotificationKind.FOLLOW_REQUEST, followed, follower, now)
         }
+        if (inserted) events.publishCommitted(FollowRequested(follower, followed, now))
     }
     override fun accept(follower: UserId, followed: UserId, now: Instant) {
-        transaction { c ->
-            val accepted = c.prepareStatement("UPDATE member_follows SET status = 'accepted', accepted_at = ? WHERE follower_id = ? AND followed_id = ? AND status = 'pending'").use { s ->
+        val accepted = transaction { c ->
+            val updated = c.prepareStatement("UPDATE member_follows SET status = 'accepted', accepted_at = ? WHERE follower_id = ? AND followed_id = ? AND status = 'pending'").use { s ->
                 s.setTimestamp(1, Timestamp.from(now)); s.setObject(2, follower.value); s.setObject(3, followed.value)
                 s.executeUpdate() == 1
             }
-            if (accepted) {
-                NotificationWriter.remove(c, NotificationKind.FOLLOW_REQUEST, followed, follower)
-                NotificationWriter.add(c, NotificationKind.FOLLOW_ACCEPTED, follower, followed, now)
-            }
+            if (updated) NotificationWriter.remove(c, NotificationKind.FOLLOW_REQUEST, followed, follower)
+            updated
         }
+        if (accepted) events.publishCommitted(FollowAccepted(follower, followed, now))
     }
     override fun remove(follower: UserId, followed: UserId, only: FollowState?) {
         transaction { c ->
@@ -82,8 +84,8 @@ class PostgresFollows(private val dataSource: DataSource) : Follows {
             s.executeQuery().use { it.next(); it.getLong(1) }
         }
     }
-    private fun transaction(action: (Connection) -> Unit) = dataSource.connection.use { c ->
+    private fun <T> transaction(action: (Connection) -> T): T = dataSource.connection.use { c ->
         c.autoCommit = false
-        try { action(c); c.commit() } catch (error: Exception) { c.rollback(); throw error }
+        try { action(c).also { c.commit() } } catch (error: Exception) { c.rollback(); throw error }
     }
 }

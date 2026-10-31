@@ -2,6 +2,7 @@ package com.example.social.infrastructure
 
 import com.example.social.application.*
 import com.example.social.domain.*
+import com.example.social.sharedkernel.EventBus
 import com.zaxxer.hikari.*
 import org.flywaydb.core.Flyway
 import org.testcontainers.containers.PostgreSQLContainer
@@ -21,7 +22,7 @@ class PostgresSuggestionsTest {
                 val requested = Account(UserId.new(), "requested@example.com", "Requested", null, true).also(accounts::create)
                 val unverified = Account(UserId.new(), "unverified@example.com", "Unverified", null, false).also(accounts::create)
                 val suggested = Account(UserId.new(), "suggested@example.com", "Suggested", null, true).also(accounts::create)
-                val service = FollowService(accounts, PostgresFollows(ds))
+                val service = FollowService(accounts, PostgresFollows(ds, EventBus()))
                 service.request(viewer.id, following.id)
                 service.accept(following.id, viewer.id)
                 service.request(viewer.id, requested.id)

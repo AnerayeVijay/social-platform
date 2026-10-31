@@ -244,7 +244,7 @@ class PostgresPostRepositoryTest {
                 val accounts = PostgresAccounts(dataSource)
                 fun member(email: String) = com.example.social.application.Account(UserId.new(), email, email, null, true).also(accounts::create).id
                 val owner = member("owner@example.com"); val follower = member("follower@example.com"); val stranger = member("stranger@example.com")
-                val follows = com.example.social.application.FollowService(accounts, PostgresFollows(dataSource))
+                val follows = com.example.social.application.FollowService(accounts, PostgresFollows(dataSource, EventBus()))
                 val repository = PostgresPostRepository(dataSource, EventBus())
                 val png = PostImage("image/png", byteArrayOf(7))
                 val post = repository.saveWithImages(Post.publish(owner, "", imageCount = 1).copy(visibility = PostVisibility.MEMBERS), listOf(png))

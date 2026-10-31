@@ -80,7 +80,7 @@ class PostgresHashtagQueriesTest {
             val viewer = Account(UserId.new(), "viewer@example.com", "Viewer", null, true).also(accounts::create)
             val friend = Account(UserId.new(), "friend@example.com", "Friend", null, true).also(accounts::create)
             val stranger = Account(UserId.new(), "stranger@example.com", "Stranger", null, true).also(accounts::create)
-            FollowService(accounts, PostgresFollows(dataSource)).apply {
+            FollowService(accounts, PostgresFollows(dataSource, EventBus())).apply {
                 request(viewer.id, friend.id)
                 accept(friend.id, viewer.id)
             }

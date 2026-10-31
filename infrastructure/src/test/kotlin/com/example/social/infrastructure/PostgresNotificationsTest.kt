@@ -24,7 +24,7 @@ class PostgresNotificationsTest {
         val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
         val notifications = Notifications(PostgresNotifications(ds))
 
-        FollowService(accounts, PostgresFollows(ds)).request(a, b)
+        FollowService(accounts, wiredFollows(ds)).request(a, b)
 
         val received = notifications.list(b)
         assertEquals(listOf(NotificationKind.FOLLOW_REQUEST to (a to "Ada")), received.map { it.kind to (it.actor to it.actorName) })
@@ -38,7 +38,7 @@ class PostgresNotificationsTest {
         val accounts = PostgresAccounts(ds)
         val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
         val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
 
         follows.request(a, b)
@@ -55,24 +55,39 @@ class PostgresNotificationsTest {
         assertEquals(1L, notifications.unreadCount(b))
     }
 
-    @Test fun `a failed notice write rolls back the follow request and a failed withdrawal keeps the request`() = withDatabase { ds ->
+    @Test fun `a failed request notice keeps the pending request without a notice`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
         val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
         ds.connection.use { it.createStatement().execute("""
             CREATE FUNCTION fail_notice() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'} BEGIN RAISE EXCEPTION 'notice write failed'; END ${'$'}${'$'};
             CREATE TRIGGER fail_notice BEFORE INSERT OR DELETE ON notifications FOR EACH ROW EXECUTE FUNCTION fail_notice();
         """) }
 
-        assertFails { follows.request(a, b) }
-        assertEquals(FollowState.NONE, follows.state(a, b))
+        follows.request(a, b)
 
+        assertEquals(FollowState.PENDING, follows.state(a, b))
+        assertEquals(0L, notifications.unreadCount(b))
+    }
+
+    @Test fun `a failed withdrawal keeps the pending request and its notice`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
+        val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
+        val follows = FollowService(accounts, wiredFollows(ds))
+        val notifications = Notifications(PostgresNotifications(ds))
+        ds.connection.use { it.createStatement().execute("""
+            CREATE FUNCTION fail_notice() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'} BEGIN RAISE EXCEPTION 'notice write failed'; END ${'$'}${'$'};
+            CREATE TRIGGER fail_notice BEFORE INSERT OR DELETE ON notifications FOR EACH ROW EXECUTE FUNCTION fail_notice();
+        """) }
         ds.connection.use { it.createStatement().execute("ALTER TABLE notifications DISABLE TRIGGER fail_notice") }
         follows.request(a, b)
         ds.connection.use { it.createStatement().execute("ALTER TABLE notifications ENABLE TRIGGER fail_notice") }
+
         assertFails { follows.cancel(a, b) }
+
         assertEquals(FollowState.PENDING, follows.state(a, b))
         assertEquals(1L, notifications.unreadCount(b))
     }
@@ -81,7 +96,7 @@ class PostgresNotificationsTest {
         val accounts = PostgresAccounts(ds)
         val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
         val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
 
         follows.request(a, b)
@@ -97,7 +112,7 @@ class PostgresNotificationsTest {
         val accounts = PostgresAccounts(ds)
         val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
         val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
 
         follows.accept(b, a)
@@ -119,11 +134,11 @@ class PostgresNotificationsTest {
         assertEquals(emptyList(), notifications.list(b))
     }
 
-    @Test fun `a failed accepted notice write rolls back the acceptance and keeps the pending notice`() = withDatabase { ds ->
+    @Test fun `a failed accepted notice write keeps the acceptance and withdraws the pending notice`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
         val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
         follows.request(a, b)
         ds.connection.use { it.createStatement().execute("""
@@ -131,18 +146,32 @@ class PostgresNotificationsTest {
             CREATE TRIGGER fail_notice BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION fail_notice();
         """) }
 
-        assertFails { follows.accept(b, a) }
+        follows.accept(b, a)
 
-        assertEquals(FollowState.PENDING, follows.state(a, b))
-        assertEquals(listOf(NotificationKind.FOLLOW_REQUEST), notifications.list(b).map { it.kind })
+        assertEquals(FollowState.ACCEPTED, follows.state(a, b))
+        assertEquals(emptyList(), notifications.list(b))
         assertEquals(emptyList(), notifications.list(a))
+    }
+
+    @Test fun `a follow request notice is not written once the request is no longer pending`() = withDatabase { ds ->
+        val accounts = PostgresAccounts(ds)
+        val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
+        val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
+        val follows = FollowService(accounts, wiredFollows(ds))
+        val notifications = Notifications(PostgresNotifications(ds))
+        follows.request(a, b)
+        follows.cancel(a, b)
+
+        EventBus().also { NotificationHandlers(ds).register(it) }.publish(FollowRequested(a, b, java.time.Instant.now()))
+
+        assertEquals(emptyList(), notifications.list(b))
     }
 
     @Test fun `publishing a post notifies an accepted follower with the post reference`() = withDatabase { ds ->
         val accounts = PostgresAccounts(ds)
         val a = Account(UserId.new(), "a@example.com", "Ada", null, true).also(accounts::create).id
         val b = Account(UserId.new(), "b@example.com", "Bo", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
         follows.request(a, b)
         follows.accept(b, a)
@@ -159,7 +188,7 @@ class PostgresNotificationsTest {
         val follower = Account(UserId.new(), "f@example.com", "Follower", null, true).also(accounts::create).id
         val pending = Account(UserId.new(), "p@example.com", "Pending", null, true).also(accounts::create).id
         val stranger = Account(UserId.new(), "s@example.com", "Stranger", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
         val posts = wiredPosts(ds)
         follows.request(follower, author); follows.accept(author, follower)
@@ -179,7 +208,7 @@ class PostgresNotificationsTest {
         val accounts = PostgresAccounts(ds)
         val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
         val follower = Account(UserId.new(), "f@example.com", "Follower", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         follows.request(follower, author); follows.accept(author, follower)
         ds.connection.use { it.createStatement().execute("""
             CREATE FUNCTION fail_notice() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'} BEGIN RAISE EXCEPTION 'notice write failed'; END ${'$'}${'$'};
@@ -199,7 +228,7 @@ class PostgresNotificationsTest {
         val accounts = PostgresAccounts(ds)
         val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
         val follower = Account(UserId.new(), "f@example.com", "Follower", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
         val posts = wiredPosts(ds)
         follows.request(follower, author); follows.accept(author, follower)
@@ -473,7 +502,7 @@ class PostgresNotificationsTest {
         val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create).id
         val fans = (1..5).map { Account(UserId.new(), "$it@example.com", "Fan $it", null, true).also(accounts::create).id }
         val tied = java.time.Instant.parse("2026-01-01T00:00:00Z")
-        val follows = FollowService(accounts, PostgresFollows(ds)) { tied }
+        val follows = FollowService(accounts, wiredFollows(ds)) { tied }
         val notifications = Notifications(PostgresNotifications(ds))
         fans.forEach { follows.request(it, owner) }
 
@@ -491,7 +520,7 @@ class PostgresNotificationsTest {
         val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create).id
         val other = Account(UserId.new(), "other@example.com", "Other", null, true).also(accounts::create).id
         val fan = Account(UserId.new(), "fan@example.com", "Fan", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
         follows.request(fan, owner)
         follows.request(fan, other)
@@ -510,7 +539,7 @@ class PostgresNotificationsTest {
         val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create).id
         val other = Account(UserId.new(), "other@example.com", "Other", null, true).also(accounts::create).id
         val fan = Account(UserId.new(), "fan@example.com", "Fan", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
         follows.request(fan, owner)
         follows.request(other, owner)
@@ -535,7 +564,7 @@ class PostgresNotificationsTest {
         val accounts = PostgresAccounts(ds)
         val author = Account(UserId.new(), "author@example.com", "Author", null, true).also(accounts::create).id
         val follower = Account(UserId.new(), "f@example.com", "Follower", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
         val posts = wiredPosts(ds)
         follows.request(follower, author); follows.accept(author, follower)
@@ -559,7 +588,7 @@ class PostgresNotificationsTest {
         val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create).id
         val early = Account(UserId.new(), "early@example.com", "Early", null, true).also(accounts::create).id
         val late = Account(UserId.new(), "late@example.com", "Late", null, true).also(accounts::create).id
-        val follows = FollowService(accounts, PostgresFollows(ds))
+        val follows = FollowService(accounts, wiredFollows(ds))
         val notifications = Notifications(PostgresNotifications(ds))
         follows.request(early, owner)
 
@@ -580,6 +609,7 @@ class PostgresNotificationsTest {
 
     private fun wiredPosts(ds: HikariDataSource) = PostgresPostRepository(ds, EventBus().also { NotificationHandlers(ds).register(it) })
     private fun wiredThreads(ds: HikariDataSource) = PostgresCommentThreads(ds, EventBus().also { NotificationHandlers(ds).register(it) })
+    private fun wiredFollows(ds: HikariDataSource) = PostgresFollows(ds, EventBus().also { NotificationHandlers(ds).register(it) })
 
     private fun withDatabase(block: (HikariDataSource) -> Unit) {
         PostgreSQLContainer<Nothing>("postgres:17-alpine").use { database ->

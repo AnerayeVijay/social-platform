@@ -1,8 +1,11 @@
 package com.example.social.infrastructure
 
 import com.example.social.domain.CommentAdded
+import com.example.social.domain.FollowAccepted
+import com.example.social.domain.FollowRequested
 import com.example.social.domain.PostLiked
 import com.example.social.domain.PostPublished
+import com.example.social.notifications.NotificationKind
 import com.example.social.sharedkernel.DomainEvent
 import com.example.social.sharedkernel.EventBus
 import java.util.logging.Level
@@ -21,6 +24,16 @@ class NotificationHandlers(private val dataSource: DataSource) {
         }
         events.subscribe(PostPublished::class) { event ->
             dataSource.connection.use { c -> NotificationWriter.addNewPost(c, event.post) }
+        }
+        events.subscribe(FollowRequested::class) { event ->
+            dataSource.connection.use { c ->
+                NotificationWriter.addWhileFollow(c, NotificationKind.FOLLOW_REQUEST, event.followed, event.follower, event.follower, event.followed, "pending", event.at)
+            }
+        }
+        events.subscribe(FollowAccepted::class) { event ->
+            dataSource.connection.use { c ->
+                NotificationWriter.addWhileFollow(c, NotificationKind.FOLLOW_ACCEPTED, event.follower, event.followed, event.follower, event.followed, "accepted", event.at)
+            }
         }
     }
 }

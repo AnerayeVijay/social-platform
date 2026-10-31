@@ -59,11 +59,17 @@ class PostgresNotifications(private val dataSource: DataSource) : NotificationSt
 
 /** Writes notices on the caller's connection so they commit or roll back with the triggering change. */
 internal object NotificationWriter {
-    fun add(c: Connection, kind: NotificationKind, recipient: UserId, actor: UserId, now: Instant) {
+    /** Writes only while the follow still has the expected status, so a withdrawn request leaves no notice behind. */
+    fun addWhileFollow(c: Connection, kind: NotificationKind, recipient: UserId, actor: UserId, follower: UserId, followed: UserId, status: String, now: Instant) {
         require(recipient != actor) { "Members are not notified of their own actions" }
-        c.prepareStatement("INSERT INTO notifications(recipient_id, actor_id, kind, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING").use { s ->
+        c.prepareStatement("""
+            INSERT INTO notifications(recipient_id, actor_id, kind, created_at)
+            SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM member_follows WHERE follower_id = ? AND followed_id = ? AND status = ?)
+            ON CONFLICT DO NOTHING
+        """.trimIndent()).use { s ->
             s.setObject(1, recipient.value); s.setObject(2, actor.value)
             s.setString(3, kind.name.lowercase()); s.setTimestamp(4, Timestamp.from(now))
+            s.setObject(5, follower.value); s.setObject(6, followed.value); s.setString(7, status)
             s.executeUpdate()
         }
     }

@@ -22,7 +22,7 @@ class PostAudienceTest {
                 val owner = member("owner@example.com")
                 val follower = member("follower@example.com")
                 val stranger = member("stranger@example.com")
-                val follows = FollowService(accounts, PostgresFollows(ds))
+                val follows = FollowService(accounts, PostgresFollows(ds, EventBus()))
                 val repository = PostgresPostRepository(ds, EventBus())
                 val service = PostService(repository)
                 val queries = PostgresPostQueries(ds)

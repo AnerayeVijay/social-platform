@@ -25,7 +25,7 @@ class PostgresFollowsTest {
                 val accounts = PostgresAccounts(ds)
                 val owner = Account(UserId.new(), "owner@example.com", "Owner", null, true).also(accounts::create)
                 val members = (1..22).map { Account(UserId.new(), "$it@example.com", "Member $it", null, true).also(accounts::create) }
-                val service = FollowService(accounts, PostgresFollows(ds))
+                val service = FollowService(accounts, PostgresFollows(ds, EventBus()))
                 assertEquals(0L, service.count(owner.id, FollowList.FOLLOWERS))
                 assertEquals(0L, service.count(owner.id, FollowList.FOLLOWING))
                 members.forEach { service.request(it.id, owner.id) }
@@ -60,7 +60,7 @@ class PostgresFollowsTest {
                 val accounts = PostgresAccounts(ds)
                 val a = Account(UserId.new(), "a@example.com", "A", null, true).also(accounts::create).id
                 val b = Account(UserId.new(), "b@example.com", "B", null, true).also(accounts::create).id
-                val follows = FollowService(accounts, PostgresFollows(ds))
+                val follows = FollowService(accounts, PostgresFollows(ds, EventBus()))
                 Executors.newFixedThreadPool(2).use { workers ->
                     repeat(10) {
                         follows.request(a, b)
@@ -102,7 +102,7 @@ class PostgresFollowsTest {
                 val approved = members[1].id
                 val pending = members[2].id
                 val other = members[3].id
-                val follows = FollowService(accounts, PostgresFollows(ds))
+                val follows = FollowService(accounts, PostgresFollows(ds, EventBus()))
                 follows.request(viewer, approved)
                 follows.accept(approved, viewer)
                 follows.request(viewer, pending)
@@ -135,7 +135,7 @@ class PostgresFollowsTest {
                 val a = members[0].id
                 val b = members[1].id
                 val c = members[2].id
-                val follows = PostgresFollows(ds)
+                val follows = PostgresFollows(ds, EventBus())
                 val service = FollowService(accounts, follows)
                 service.request(a, b)
                 service.request(c, b)
@@ -147,7 +147,7 @@ class PostgresFollowsTest {
                 assertEquals(setOf(a, c), (first.members + second.members).map { it.id }.toSet())
                 service.accept(b, a)
                 service.request(a, b)
-                assertEquals(FollowState.ACCEPTED, PostgresFollows(ds).state(a, b))
+                assertEquals(FollowState.ACCEPTED, PostgresFollows(ds, EventBus()).state(a, b))
                 service.reject(b, a)
                 assertEquals(FollowState.ACCEPTED, follows.state(a, b))
                 service.unfollow(c, b)

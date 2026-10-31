@@ -38,7 +38,7 @@ fun main() {
         (System.getenv("SMTP_STARTTLS") ?: "false").toBooleanStrict())
     val accountService = AccountService(accounts, Pbkdf2Passwords(), ::secureToken, links::send, revokeSessions = sessions::deleteForAccount)
     val queries = PostgresPostQueries(dataSource)
-    val follows = FollowService(accounts, PostgresFollows(dataSource))
+    val follows = FollowService(accounts, PostgresFollows(dataSource, events))
     val hashtagFollows = HashtagFollowService(PostgresHashtagFollows(dataSource))
     val googleIdentities = PostgresGoogleIdentities(dataSource)
     val threads = CommentThreads(PostgresCommentThreads(dataSource, events))
