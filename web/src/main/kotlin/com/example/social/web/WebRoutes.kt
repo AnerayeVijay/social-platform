@@ -10,9 +10,9 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 
-fun webRoutes(queries: PostQueries, service: PostService? = null, access: AccessControl? = null, accounts: Accounts? = null, accountService: AccountService? = null, follows: FollowService? = null, googleIdentities: GoogleIdentities? = null, threads: CommentThreads? = null, articleFeeds: ArticleFeedService? = null, uploadClock: java.time.Clock = java.time.Clock.systemUTC(), hashtagFollows: HashtagFollowService? = null): RoutingHttpHandler = routes(
+fun webRoutes(queries: PostQueries, service: PostService? = null, access: AccessControl? = null, accounts: Accounts? = null, accountService: AccountService? = null, follows: FollowService? = null, googleIdentities: GoogleIdentities? = null, threads: CommentThreads? = null, articleFeeds: ArticleFeedService? = null, articleSharing: ArticleSharing? = null, uploadClock: java.time.Clock = java.time.Clock.systemUTC(), hashtagFollows: HashtagFollowService? = null): RoutingHttpHandler = routes(
     brandRoutes(),
-    articleFeedWebRoutes(articleFeeds, access, accounts),
+    articleFeedWebRoutes(articleFeeds, access, accounts, articleSharing),
     hashtagFollowWebRoutes(hashtagFollows, queries, access, accounts),
     commentWebRoutes(threads, access, accounts, uploadClock),
     followWebRoutes(follows, access),
@@ -269,7 +269,7 @@ internal fun postCard(post: PostSummary, session: Session? = null, accounts: Acc
     return """
     <article class="card post">
       <header class="post-header"><span class="avatar" aria-hidden="true" translate="no">${escapeHtml(memberInitials(author?.displayName ?: "Community member"))}</span><div><a href="/profiles/${post.authorId.value}"><strong${if (author != null) " translate=\"no\"" else ""}>${escapeHtml(author?.displayName ?: "Community member")}</strong></a><br><time datetime="${post.createdAt}">${post.createdAt}</time></div></header>
-      <p class="post-body" data-font="${post.font.name.lowercase()}" data-size="${post.size.name.lowercase()}" translate="no">${linkHashtags(post.body)}</p>
+      <p class="post-body" data-font="${post.font.name.lowercase()}" data-size="${post.size.name.lowercase()}" translate="no">${linkPostBody(post.body)}</p>
       ${postGallery(post)}
       <p class="post-audience">${audienceLabel(post.visibility)}</p>
       ${if (session?.accountId == post.authorId) "<details class=\"edit-audience\"><summary>Change audience</summary><form action=\"/web/posts/${post.id.value}/visibility\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"${escapeHtml(session.csrf)}\">${audienceSelector("audience-${post.id.value}", post.visibility)}<button class=\"button\" type=\"submit\">Save audience</button></form></details>" else ""}
@@ -288,13 +288,29 @@ internal fun escapeHtml(value: String): String = value.replace("&", "&amp;").rep
     .replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
 private const val POPULAR_SAMPLE = 100
 
-internal fun linkHashtags(text: String): String {
+internal fun linkHashtags(text: String): String = linkify(text, Post.hashtagInText) { match -> hashtagLink(match.value, match.groupValues[1]) }
+
+/** Post bodies also link http(s) URLs and this site's /discussions path; everything else stays escaped text. */
+internal fun linkPostBody(text: String): String = linkify(text, postBodyLinks) { match ->
+    if (match.value.startsWith("#")) hashtagLink(match.value, match.groupValues[1]) else externalLink(match.value)
+}
+
+private val postBodyLinks = Regex(
+    "(?<![\\p{L}\\p{N}_])(?:https?://|/discussions\\?url=)[^\\s<>\"'`]+|" + Post.hashtagInText.pattern, RegexOption.IGNORE_CASE
+)
+
+private fun hashtagLink(shown: String, tag: String) = "<a class=\"hashtag\" href=\"/hashtags/${encode(Hashtag.from(tag).value)}\">${escapeHtml(shown)}</a>"
+
+private fun externalLink(match: String): String {
+    val url = match.trimEnd('.', ',', ';', ':', '!', '?', ')')
+    return "<a href=\"${escapeHtml(url)}\" rel=\"noopener noreferrer\">${escapeHtml(url)}</a>${escapeHtml(match.removePrefix(url))}"
+}
+
+private fun linkify(text: String, pattern: Regex, link: (MatchResult) -> String): String {
     val html = StringBuilder()
     var last = 0
-    Post.hashtagInText.findAll(text).forEach { match ->
-        html.append(escapeHtml(text.substring(last, match.range.first)))
-        val tag = Hashtag.from(match.groupValues[1]).value
-        html.append("<a class=\"hashtag\" href=\"/hashtags/${encode(tag)}\">${escapeHtml(match.value)}</a>")
+    pattern.findAll(text).forEach { match ->
+        html.append(escapeHtml(text.substring(last, match.range.first))).append(link(match))
         last = match.range.last + 1
     }
     return html.append(escapeHtml(text.substring(last))).toString()
@@ -312,7 +328,7 @@ private fun audienceLabel(visibility: PostVisibility): String = when (visibility
     PostVisibility.MEMBERS -> "Members only"
     PostVisibility.PRIVATE -> "Private"
 }
-private fun audienceSelector(id: String, selected: PostVisibility): String =
+internal fun audienceSelector(id: String, selected: PostVisibility): String =
     "<label for=\"$id\">Audience</label><select id=\"$id\" name=\"visibility\">" + PostVisibility.entries.joinToString("") {
         "<option value=\"${it.name.lowercase()}\"${if (it == selected) " selected" else ""}>${audienceLabel(it)}</option>"
     } + "</select><p class=\"audience-help\">Members only posts are visible to your approved followers. Private posts are visible only to you.</p>"
