@@ -129,6 +129,31 @@ class PostgresArticleDiscussionsTest {
         }
     }
 
+    @Test fun `lookup finds an article only for the owner of its source and matches url variants by thread key`() {
+        withDatabase { dataSource ->
+            val accounts = PostgresAccounts(dataSource)
+            val (alice, bob) = List(2) { UserId.new() }
+            for (id in listOf(alice, bob)) accounts.create(Account(id, "${id.value}@example.com", "Reader", null, true))
+            val repository = PostgresArticleFeeds(dataSource)
+            val now = Instant.parse("2026-10-27T12:00:00Z")
+            val source = FeedSource(UUID.randomUUID(), alice, "News", "https://example.com/feed", now)
+            repository.add(source, 20)
+            repository.storeEntries(alice, source.id, listOf(
+                FeedEntry("A_100%", "https://Example.com/a_100%25/?utm_source=x", "Abstract", now),
+                FeedEntry("Other", "https://example.com/a_1000", "Abstract", now)
+            ), now)
+            val article = repository.page(alice, 20, null).articles.first { it.title == "A_100%" }
+            assertEquals(article, repository.find(alice, article.id))
+            assertNull(repository.find(bob, article.id))
+            assertNull(repository.find(alice, UUID.randomUUID()))
+            for (key in listOf("https://example.com/a_100%25", articleThreadKey("https://example.com/a_100%25/#x")))
+                assertEquals(article, repository.findByThreadKey(alice, key))
+            assertNull(repository.findByThreadKey(bob, "https://example.com/a_100%25"))
+            assertNull(repository.findByThreadKey(alice, "https://example.com/a_10"))
+            assertNull(repository.findByThreadKey(alice, "not a url"))
+        }
+    }
+
     private fun withDatabase(action: (HikariDataSource) -> Unit) {
         PostgreSQLContainer<Nothing>("postgres:17-alpine").use { database ->
             database.start()

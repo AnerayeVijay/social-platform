@@ -11,7 +11,7 @@ import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
 
-class PostgresArticleFeeds(private val dataSource: DataSource) : ArticleFeeds, ArticleFeedContent, ArticleDiscussions {
+class PostgresArticleFeeds(private val dataSource: DataSource) : ArticleFeeds, ArticleFeedContent, ArticleDiscussions, ArticleLookup {
     override fun add(source: FeedSource, maxPerOwner: Int): Boolean = transaction { connection ->
         // All adds for a member share this lock, including the first subscription.
         val exists = connection.prepareStatement("SELECT id FROM accounts WHERE id=? FOR UPDATE").use {
@@ -146,6 +146,28 @@ class PostgresArticleFeeds(private val dataSource: DataSource) : ArticleFeeds, A
             it.executeUpdate()
         }
         true
+    }
+
+    override fun find(viewer: UserId, id: UUID): FeedArticle? = dataSource.connection.use { connection ->
+        connection.prepareStatement("""
+            SELECT a.*,s.name AS source_name FROM feed_articles a JOIN article_feed_sources s ON s.id=a.source_id WHERE a.id=? AND s.owner_id=?
+        """.trimIndent()).use {
+            it.setObject(1, id); it.setObject(2, viewer.value)
+            it.executeQuery().use { rows -> if (rows.next()) rows.article() else null }
+        }
+    }
+
+    override fun findByThreadKey(viewer: UserId, key: String): FeedArticle? = dataSource.connection.use { connection ->
+        // Narrow by the key's scheme://host prefix in SQL; the exact comparison needs the Kotlin normaliser.
+        val prefix = Regex("^[^:/?#]+://[^/?#]*").find(key)?.value ?: key
+        connection.prepareStatement("""
+            SELECT a.*,s.name AS source_name FROM feed_articles a JOIN article_feed_sources s ON s.id=a.source_id
+            WHERE s.owner_id=? AND lower(a.url) LIKE ? ESCAPE '\' ORDER BY a.published_at DESC,a.id DESC
+        """.trimIndent()).use {
+            it.setObject(1, viewer.value)
+            it.setString(2, prefix.lowercase().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
+            it.executeQuery().use { rows -> buildList { while (rows.next()) add(rows.article()) } }
+        }.firstOrNull { articleThreadKey(it.url) == key }
     }
 
     /** Rewrites stored thread keys to [articleThreadKey], merging threads that collide into the earliest one. Idempotent. */
