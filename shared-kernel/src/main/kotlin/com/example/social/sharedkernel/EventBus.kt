@@ -11,7 +11,9 @@ class EventBus {
         handlers.getOrPut(type) { mutableListOf() }.add { handler(type.java.cast(it)) }
     }
 
-    fun publish(event: DomainEvent) {
-        handlers[event::class].orEmpty().forEach { it(event) }
+    fun publish(event: DomainEvent): List<Throwable> {
+        return handlers[event::class].orEmpty().mapNotNull { handler ->
+            runCatching { handler(event) }.exceptionOrNull()
+        }
     }
 }

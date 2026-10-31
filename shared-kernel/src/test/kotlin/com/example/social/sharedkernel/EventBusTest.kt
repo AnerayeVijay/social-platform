@@ -19,4 +19,18 @@ class EventBusTest {
 
         assertEquals(listOf<DomainEvent>(liked), received)
     }
+
+    @Test fun `a failing subscriber does not stop the others and its failure is returned`() {
+        val bus = EventBus()
+        val failure = IllegalStateException("notice store down")
+        val received = mutableListOf<DomainEvent>()
+        bus.subscribe(PostLiked::class) { throw failure }
+        bus.subscribe(PostLiked::class) { received += it }
+        val liked = PostLiked(AccountId(UUID.randomUUID()))
+
+        val failures = bus.publish(liked)
+
+        assertEquals(listOf<DomainEvent>(liked), received)
+        assertEquals(listOf<Throwable>(failure), failures)
+    }
 }
